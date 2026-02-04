@@ -6,6 +6,8 @@
   const TRANSPARENT = 255;
   const MAX_SIZE = 512;
   const MAX_HISTORY = 50;
+  const LS_KEY = "jurased_state_v1";
+  let saveTimer = null;
 
   // Pepto C64 palette (commonly used).
   const C64 = [
@@ -2017,8 +2019,6 @@
   }
 
   // localStorage persistence
-  const LS_KEY = "jurased_state_v1";
-  let saveTimer = null;
   function scheduleSave() {
     if (isHydrating) return;
     if (saveTimer) return;
