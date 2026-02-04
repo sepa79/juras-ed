@@ -200,6 +200,7 @@
   syncResUi();
   setInitialGrid();
   wireEvents();
+  wirePersistenceGuards();
   if (!loadState()) {
     initSprites();
   }
@@ -209,6 +210,16 @@
   render();
   isHydrating = false;
   applyTheme(theme);
+
+  function wirePersistenceGuards() {
+    // localStorage writes are debounced; flush immediately when leaving the page
+    // so quick F5 / close doesn't lose the last changes.
+    window.addEventListener("pagehide", () => saveState());
+    window.addEventListener("beforeunload", () => saveState());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") saveState();
+    });
+  }
 
   function wireEvents() {
     spritesXEl.addEventListener("change", () => {
@@ -2020,8 +2031,9 @@
   function saveState() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(buildStateObject()));
-    } catch {
-      // ignore quota / serialization errors
+    } catch (err) {
+      // Quota / blocked storage / serialization errors.
+      console.warn("[JurasEd] localStorage save failed:", err);
     }
   }
 
@@ -2031,7 +2043,8 @@
       if (!raw) return false;
       const state = JSON.parse(raw);
       return hydrateFromStateObject(state);
-    } catch {
+    } catch (err) {
+      console.warn("[JurasEd] localStorage load failed:", err);
       return false;
     }
   }
