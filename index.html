@@ -16,6 +16,10 @@
           <span class="brand__motto">Tylko z łapy 😄</span>
         </div>
         <div class="brand__subtitle">Edytor C64 Sprite 'dla debili'.</div>
+        <label class="brand__projectRow">
+          <span class="brand__projectLbl">Kolekcja</span>
+          <input id="projectName" class="brand__project" type="text" value="Moja kolekcja" maxlength="40" autocomplete="off" />
+        </label>
       </div>
       <div class="topbar__actions">
         <button id="btnTheme" class="btn" type="button" aria-pressed="false" title="Theme (Light/Dark)">
@@ -197,6 +201,16 @@
             <span class="toggleBox" aria-hidden="true"></span>
             <span class="toggleText">Siatka</span>
           </label>
+        </section>
+
+        <section class="card">
+          <h2 class="card__title">Local storage</h2>
+          <div id="lsInfo" class="hint">—</div>
+          <div class="row">
+            <button id="btnSaveNow" class="btn" type="button" title="Zapisz stan do localStorage teraz">Zapisz teraz</button>
+            <button id="btnLsClear" class="btn btn--danger" type="button" title="Wyczyść zapis localStorage (z Shift bez potwierdzenia)">Wyczyść zapis</button>
+          </div>
+          <div class="hint">Tip: Export/Import na górnym pasku to backup projektu jako plik JSON.</div>
         </section>
 
       </aside>

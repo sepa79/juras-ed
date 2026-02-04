@@ -80,6 +80,10 @@
   const btnConfirmClose = el("btnConfirmClose");
   const btnConfirmCancel = el("btnConfirmCancel");
   const btnConfirmOk = el("btnConfirmOk");
+  const projectNameEl = el("projectName");
+  const lsInfoEl = el("lsInfo");
+  const btnSaveNow = el("btnSaveNow");
+  const btnLsClear = el("btnLsClear");
 
   const btnProjectExport = el("btnProjectExport");
   const btnProjectImport = el("btnProjectImport");
@@ -194,6 +198,7 @@
   let confirmOpen = false;
   let confirmPrevFocus = null;
   let confirmResolve = null;
+  let projectName = (projectNameEl.value || "").trim() || "Moja kolekcja";
 
   buildPalette();
   syncSlotUi();
@@ -212,6 +217,8 @@
   render();
   isHydrating = false;
   applyTheme(theme);
+  syncProjectNameUi();
+  syncLsInfo();
 
   function wirePersistenceGuards() {
     // localStorage writes are debounced; flush immediately when leaving the page
@@ -346,6 +353,30 @@
       scheduleSave();
     });
     btnHelp.addEventListener("click", () => openHelp());
+    projectNameEl.addEventListener("input", () => {
+      projectName = (projectNameEl.value || "").trim() || "Moja kolekcja";
+      syncProjectNameUi();
+      scheduleSave();
+    });
+    btnSaveNow.addEventListener("click", () => {
+      saveState();
+      flashLsInfo("Zapisano.");
+    });
+    btnLsClear.addEventListener("click", async (e) => {
+      if (!e.shiftKey) {
+        const ok = await askConfirm("Wyczyścić zapis localStorage i zresetować edytor?", {
+          title: "Wyczyść localStorage",
+          okText: "Wyczyść",
+        });
+        if (!ok) return;
+      }
+      try {
+        localStorage.removeItem(LS_KEY);
+      } catch (err) {
+        console.warn("[JurasEd] localStorage clear failed:", err);
+      }
+      location.reload();
+    });
     btnProjectExport.addEventListener("click", () => exportProject());
     btnProjectImport.addEventListener("click", () => {
       fileProject.value = "";
@@ -1950,9 +1981,35 @@
 
       const row = document.createElement("div");
       row.className = "libRow";
-      const meta = document.createElement("div");
-      meta.className = "libMeta";
-      meta.textContent = sp.name;
+      let meta = null;
+      if (sp.id === activeSpriteId) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "libNameInput";
+        input.value = sp.name;
+        input.maxLength = 40;
+        input.title = "Zmień nazwę aktywnego sprite";
+        input.addEventListener("click", (e) => e.stopPropagation());
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") input.blur();
+          e.stopPropagation();
+        });
+        input.addEventListener("input", () => {
+          sp.name = (input.value || "").trim() || "Sprite";
+          scheduleSave();
+        });
+        input.addEventListener("blur", () => {
+          sp.name = (input.value || "").trim() || "Sprite";
+          scheduleSave();
+          renderSprites();
+        });
+        meta = input;
+      } else {
+        const div = document.createElement("div");
+        div.className = "libMeta";
+        div.textContent = sp.name;
+        meta = div;
+      }
 
       row.appendChild(meta);
       if (sp.id === activeSpriteId) {
@@ -2053,6 +2110,7 @@
     return {
       v: 1,
       ts: Date.now(),
+      project: { name: projectName },
       ui: uiState,
       settings: {
         theme,
@@ -2084,6 +2142,10 @@
   function hydrateFromStateObject(state) {
     if (!state || state.v !== 1) return false;
     isHydrating = true;
+
+    if (state.project && typeof state.project.name === "string") {
+      projectName = state.project.name.trim() || projectName;
+    }
 
     if (state.ui) {
       uiState.spritesCollapsed = !!state.ui.spritesCollapsed;
@@ -2170,6 +2232,8 @@
 
     applyCollapseUi();
     applyTheme(theme);
+    syncProjectNameUi();
+    syncLsInfo();
     syncSlotUi();
     setActiveSlot(activeSlot);
     setTool(tool);
@@ -2179,6 +2243,26 @@
     render();
     isHydrating = false;
     return true;
+  }
+
+  function syncProjectNameUi() {
+    if (projectNameEl.value !== projectName) projectNameEl.value = projectName;
+    document.title = projectName ? `JurasEd — ${projectName}` : "JurasEd";
+  }
+
+  let lsInfoTimer = null;
+  function flashLsInfo(text) {
+    syncLsInfo(text);
+    if (lsInfoTimer) clearTimeout(lsInfoTimer);
+    lsInfoTimer = setTimeout(() => {
+      lsInfoTimer = null;
+      syncLsInfo();
+    }, 900);
+  }
+
+  function syncLsInfo(extra) {
+    const base = `Auto-zapis: localStorage (${LS_KEY})`;
+    lsInfoEl.textContent = extra ? `${base} • ${extra}` : base;
   }
 
   function exportProject() {
