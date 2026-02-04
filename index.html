@@ -15,28 +15,36 @@
           <span>JurasEd</span>
           <span class="brand__motto">Tylko z łapy 😄</span>
         </div>
-        <div class="brand__subtitle">Edytor C64 Sprite 'dla debili'.</div>
-        <label class="brand__projectRow">
-          <span class="brand__projectLbl">Kolekcja</span>
-          <input id="projectName" class="brand__project" type="text" value="Moja kolekcja" maxlength="40" autocomplete="off" />
-        </label>
+        <div class="brand__subtitle" data-i18n="brand_subtitle">Edytor C64 Sprite 'dla debili'.</div>
       </div>
       <div class="topbar__actions">
         <button id="btnTheme" class="btn" type="button" aria-pressed="false" title="Theme (Light/Dark)">
           <span class="themeDot" aria-hidden="true"></span>
           <span class="themeText">Theme</span>
         </button>
-        <button id="btnProjectExport" class="btn" type="button" title="Export project (JSON)">Export</button>
-        <button id="btnProjectImport" class="btn" type="button" title="Import project (JSON)">Import</button>
-        <button id="btnSave" class="btn btn--primary" type="button">Zapisz PNG</button>
-        <button id="btnHelp" class="btn" type="button" title="Pomoc">Pomoc</button>
+        <button id="btnHotkeys" class="btn" type="button" title="Hotkeys (?)" aria-label="Hotkeys">?</button>
+        <button id="btnLang" class="btn" type="button" title="Language">PL</button>
+        <input
+          id="projectName"
+          class="topbarInput"
+          type="text"
+          value=""
+          maxlength="40"
+          autocomplete="off"
+          aria-label="Collection name"
+          placeholder="Moja kolekcja"
+        />
+        <button id="btnProjectExport" class="btn" type="button" title="Export project (JSON)" data-i18n="export">Export</button>
+        <button id="btnProjectImport" class="btn" type="button" title="Import project (JSON)" data-i18n="import">Import</button>
+        <button id="btnSave" class="btn btn--primary" type="button" data-i18n="save_png">Zapisz PNG</button>
+        <button id="btnHelp" class="btn" type="button" title="Pomoc" data-i18n="help">Pomoc</button>
       </div>
     </header>
 
     <main class="layout">
       <aside class="panel">
         <section class="card">
-          <h2 class="card__title">Paleta C64</h2>
+          <h2 class="card__title" data-i18n="palette_c64">Paleta C64</h2>
           <div class="colorSlots" aria-label="Skróty kolorów">
             <button id="slotFg" class="btn slotBtn" type="button" aria-pressed="true" title="Foreground (1)">
               <span class="slotLbl">FG</span>
@@ -57,17 +65,17 @@
           </div>
           <div id="palette" class="palette" role="radiogroup" aria-label="Paleta kolorów C64"></div>
           <div class="row">
-            <div class="hint">Wybierz slot (FG/MC1/MC2/OUT), potem kliknij kolor w palecie, żeby go przypisać.</div>
+            <div class="hint" data-i18n="palette_hint">Wybierz slot (FG/MC1/MC2/OUT), potem kliknij kolor w palecie, żeby go przypisać.</div>
           </div>
         </section>
 
         <section class="card">
-          <h2 class="card__title">Narzędzia</h2>
+          <h2 class="card__title" data-i18n="tools">Narzędzia</h2>
           <div class="row">
             <label class="toggle toggleBtn">
               <input id="widePixel" type="checkbox" />
               <span class="toggleBox" aria-hidden="true"></span>
-              <span class="toggleText">2× wide pixel (multicolor)</span>
+              <span class="toggleText" data-i18n="wide_pixel">2× wide pixel (multicolor)</span>
             </label>
           </div>
           <div class="tools">
@@ -147,42 +155,42 @@
             <label class="toggle toggleBtn">
               <input id="shapeFill" type="checkbox" />
               <span class="toggleBox" aria-hidden="true"></span>
-              <span class="toggleText">Wypełniaj kształty</span>
+              <span class="toggleText" data-i18n="shape_fill">Wypełniaj kształty</span>
             </label>
           </div>
           <div class="row">
-            <button id="btnTransform" class="btn" type="button" aria-pressed="false" title="Transform mode (T)">Transform mode</button>
-            <button id="btnClear" class="btn btn--danger" type="button">Wyczyść</button>
+            <button id="btnTransform" class="btn" type="button" aria-pressed="false" title="Transform mode (T)" data-i18n="transform_mode">Transform mode</button>
+            <button id="btnClear" class="btn btn--danger" type="button" data-i18n="clear">Wyczyść</button>
           </div>
-          <div class="hint">Prawy przycisk myszy zawsze działa jak gumka (bez zmiany narzędzia).</div>
+          <div class="hint" data-i18n="rmb_eraser_hint">Prawy przycisk myszy zawsze działa jak gumka (bez zmiany narzędzia).</div>
         </section>
 
         <section class="card">
-          <h2 class="card__title">Płótno</h2>
+          <h2 class="card__title" data-i18n="canvas">Płótno</h2>
           <div class="row">
             <label class="toggle toggleBtn">
               <input id="customRes" type="checkbox" />
               <span class="toggleBox" aria-hidden="true"></span>
-              <span class="toggleText">Dowolna rozdzielczość</span>
+              <span class="toggleText" data-i18n="custom_res">Dowolna rozdzielczość</span>
             </label>
           </div>
           <div id="spriteControls" class="grid2">
             <label class="field">
-              <span class="field__label">Szerokość (sprajty)</span>
+              <span class="field__label" data-i18n="sprites_w">Szerokość (sprajty)</span>
               <input id="spritesX" class="field__input" type="number" min="1" max="8" value="1" />
             </label>
             <label class="field">
-              <span class="field__label">Wysokość (sprajty)</span>
+              <span class="field__label" data-i18n="sprites_h">Wysokość (sprajty)</span>
               <input id="spritesY" class="field__input" type="number" min="1" max="8" value="1" />
             </label>
           </div>
           <div id="customControls" class="grid2" hidden>
             <label class="field">
-              <span class="field__label">Szerokość (px)</span>
+              <span class="field__label" data-i18n="px_w">Szerokość (px)</span>
               <input id="customW" class="field__input" type="number" min="1" max="512" value="24" />
             </label>
             <label class="field">
-              <span class="field__label">Wysokość (px)</span>
+              <span class="field__label" data-i18n="px_h">Wysokość (px)</span>
               <input id="customH" class="field__input" type="number" min="1" max="512" value="21" />
             </label>
           </div>
@@ -192,25 +200,25 @@
               <input id="zoom" class="field__input" type="range" min="4" max="64" value="16" />
             </label>
             <label class="field">
-              <span class="field__label">Tło podglądu</span>
+              <span class="field__label" data-i18n="preview_bg">Tło podglądu</span>
               <input id="bgColor" class="field__input field__input--color" type="color" value="#203040" />
             </label>
           </div>
           <label class="toggle toggleBtn">
             <input id="showGrid" type="checkbox" checked />
             <span class="toggleBox" aria-hidden="true"></span>
-            <span class="toggleText">Siatka</span>
+            <span class="toggleText" data-i18n="grid">Siatka</span>
           </label>
         </section>
 
         <section class="card">
-          <h2 class="card__title">Local storage</h2>
+          <h2 class="card__title" data-i18n="local_storage">Local storage</h2>
           <div id="lsInfo" class="hint">—</div>
           <div class="row">
-            <button id="btnSaveNow" class="btn" type="button" title="Zapisz stan do localStorage teraz">Zapisz teraz</button>
-            <button id="btnLsClear" class="btn btn--danger" type="button" title="Wyczyść zapis localStorage (z Shift bez potwierdzenia)">Wyczyść zapis</button>
+            <button id="btnSaveNow" class="btn" type="button" title="Zapisz stan do localStorage teraz" data-i18n="save_now">Zapisz teraz</button>
+            <button id="btnLsClear" class="btn btn--danger" type="button" title="Wyczyść zapis localStorage (z Shift bez potwierdzenia)" data-i18n="clear_saved">Wyczyść zapis</button>
           </div>
-          <div class="hint">Tip: Export/Import na górnym pasku to backup projektu jako plik JSON.</div>
+          <div class="hint" data-i18n="ls_tip">Tip: Export/Import na górnym pasku to backup projektu jako plik JSON.</div>
         </section>
 
       </aside>
@@ -255,7 +263,7 @@
       <aside class="panel panel--right" aria-label="Library">
         <section class="card">
           <div class="card__head">
-            <h2 class="card__title">Sprites</h2>
+            <h2 class="card__title" data-i18n="sprites">Sprites</h2>
             <button id="btnToggleSprites" class="iconBtn collapseBtn" type="button" aria-expanded="true" title="Collapse">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
             </button>
@@ -272,25 +280,25 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
               </button>
             </div>
-            <div class="hint">Klik miniatury przełącza aktywną edycję.</div>
+            <div class="hint" data-i18n="sprites_hint">Klik miniatury przełącza aktywną edycję.</div>
             <div id="spriteList" class="library library--sprites"></div>
           </div>
         </section>
         <section class="card">
           <div class="card__head">
-            <h2 class="card__title">Swatches</h2>
+            <h2 class="card__title" data-i18n="swatches">Swatches</h2>
             <button id="btnToggleSwatches" class="iconBtn collapseBtn" type="button" aria-expanded="true" title="Collapse">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
             </button>
           </div>
-            <div id="swatchesBody">
+          <div id="swatchesBody">
               <div class="row">
                 <button id="btnImportSwatchPng" class="iconBtn" type="button" title="Import PNG as swatch" aria-label="Import PNG as swatch">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2v11l4-4 1.41 1.41L12 16.83 6.59 10.41 8 9l4 4V2h0z"/></svg>
                 </button>
               </div>
-              <div class="hint">Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).</div>
-              <div id="libraryList" class="library library--swatches"></div>
+            <div class="hint" data-i18n="swatches_hint">Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).</div>
+            <div id="libraryList" class="library library--swatches"></div>
           </div>
         </section>
       </aside>
@@ -299,11 +307,11 @@
     <footer class="statusbar" aria-label="Status">
       <div class="statuscard">
         <div class="statusgrid">
-          <div class="kv"><div class="k">Cursor</div><div id="statusCursor" class="v">—</div></div>
-          <div class="kv"><div class="k">Tool</div><div id="statusTool" class="v">—</div></div>
-          <div class="kv"><div class="k">Color</div><div id="statusColor" class="v">—</div></div>
-          <div class="kv"><div class="k">Mode</div><div id="statusMode" class="v">—</div></div>
-          <div class="kv"><div class="k">Canvas</div><div id="statusCanvas" class="v">—</div></div>
+          <div class="kv"><div class="k" data-i18n="status_cursor">Cursor</div><div id="statusCursor" class="v">—</div></div>
+          <div class="kv"><div class="k" data-i18n="status_tool">Tool</div><div id="statusTool" class="v">—</div></div>
+          <div class="kv"><div class="k" data-i18n="status_color">Color</div><div id="statusColor" class="v">—</div></div>
+          <div class="kv"><div class="k" data-i18n="status_mode">Mode</div><div id="statusMode" class="v">—</div></div>
+          <div class="kv"><div class="k" data-i18n="status_canvas">Canvas</div><div id="statusCanvas" class="v">—</div></div>
         </div>
       </div>
     </footer>
@@ -348,9 +356,24 @@
       </div>
     </div>
 
-    <div id="confirmModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div id="keysModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="keysTitle">
       <div class="modal__backdrop" data-close></div>
       <div class="modal__card" role="document">
+        <div class="modal__head">
+          <div id="keysTitle" class="modal__title">Hotkeys</div>
+          <button id="btnKeysClose" class="iconBtn" type="button" title="Zamknij" aria-label="Zamknij">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3 1.4 1.4z"/></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <div id="keysContent" class="keysContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirmModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__card modal__card--sm" role="document">
         <div class="modal__head">
           <div id="confirmTitle" class="modal__title">Potwierdź</div>
           <button id="btnConfirmClose" class="iconBtn" type="button" title="Zamknij" aria-label="Zamknij">

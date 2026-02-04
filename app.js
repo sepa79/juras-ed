@@ -70,10 +70,16 @@
   const btnTheme = el("btnTheme");
   const fireCanvas = el("fireCanvas");
   const btnHelp = el("btnHelp");
+  const btnHotkeys = el("btnHotkeys");
+  const btnLang = el("btnLang");
   const helpModal = el("helpModal");
   const btnHelpClose = el("btnHelpClose");
   const helpText = el("helpText");
   const helpContent = el("helpContent");
+  const keysModal = el("keysModal");
+  const btnKeysClose = el("btnKeysClose");
+  const keysTitle = el("keysTitle");
+  const keysContent = el("keysContent");
   const confirmModal = el("confirmModal");
   const confirmTitle = el("confirmTitle");
   const confirmMsg = el("confirmMsg");
@@ -198,7 +204,181 @@
   let confirmOpen = false;
   let confirmPrevFocus = null;
   let confirmResolve = null;
-  let projectName = (projectNameEl.value || "").trim() || "Moja kolekcja";
+  let projectName = (projectNameEl.value || "").trim();
+  let lang = "pl"; // pl|en
+  let keysOpen = false;
+  let keysPrevFocus = null;
+
+  const I18N = {
+    pl: {
+      brand_subtitle: "Edytor C64 Sprite 'dla debili'.",
+      collection: "Kolekcja",
+      palette_c64: "Paleta C64",
+      palette_hint: "Wybierz slot (FG/MC1/MC2/OUT), potem kliknij kolor w palecie, żeby go przypisać.",
+      tools: "Narzędzia",
+      wide_pixel: "2× wide pixel (multicolor)",
+      shape_fill: "Wypełniaj kształty",
+      transform_mode: "Transform mode",
+      clear: "Wyczyść",
+      rmb_eraser_hint: "Prawy przycisk myszy zawsze działa jak gumka (bez zmiany narzędzia).",
+      canvas: "Płótno",
+      custom_res: "Dowolna rozdzielczość",
+      sprites_w: "Szerokość (sprajty)",
+      sprites_h: "Wysokość (sprajty)",
+      px_w: "Szerokość (px)",
+      px_h: "Wysokość (px)",
+      preview_bg: "Tło podglądu",
+      grid: "Siatka",
+      local_storage: "Local storage",
+      save_now: "Zapisz teraz",
+      clear_saved: "Wyczyść zapis",
+      ls_tip: "Tip: Export/Import na górnym pasku to backup projektu jako plik JSON.",
+      sprites: "Sprites",
+      sprites_hint: "Klik miniatury przełącza aktywną edycję.",
+      swatches: "Swatches",
+      swatches_hint: "Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).",
+      status_cursor: "Cursor",
+      status_tool: "Tool",
+      status_color: "Color",
+      status_mode: "Mode",
+      status_canvas: "Canvas",
+      hotkeys: "Hotkeys",
+      hk_colors: "Kolory",
+      hk_tools: "Narzędzia",
+      hk_edit: "Edycja",
+      hk_view: "Widok",
+      hk_transform: "Transform",
+      hk_scroll: "Scroll",
+      hk_colors_desc: "`1` FG, `2` MC1, `3` MC2, `4` OUT",
+      hk_pen: "Pen",
+      hk_eraser: "Eraser",
+      hk_line: "Line",
+      hk_fill: "Fill",
+      hk_rect: "Rectangle",
+      hk_circle: "Circle",
+      hk_select: "Select",
+      hk_undo: "Undo",
+      hk_redo: "Redo",
+      hk_copy: "Copy (Select)",
+      hk_paste: "Paste",
+      hk_cancel: "Esc cancel paste/selection",
+      hk_grid: "Grid toggle",
+      hk_wide: "Wide pixel toggle",
+      hk_shape_fill: "Shape fill toggle",
+      hk_transform_mode: "Transform mode toggle",
+      hk_mirrorx: "Mirror X (draw)",
+      hk_mirrory: "Mirror Y (draw)",
+      hk_roll: "Roll (arrows in transform mode)",
+      hk_zoom: "Wheel = zoom",
+      hk_shift_wheel: "Shift+Wheel = slot 1–4",
+      hk_ctrl_wheel: "Ctrl/Cmd+Wheel = change color in active slot",
+      ls_base: "Auto-zapis: localStorage",
+      lang_title: "Język (PL/EN)",
+      export: "Export",
+      import: "Import",
+      save_png: "Zapisz PNG",
+      help: "Pomoc",
+      default_collection: "Moja kolekcja",
+      project_placeholder: "Nazwa kolekcji…",
+      swatches_empty: "Brak swatchy. Zaznacz fragment (Select/Q) i Ctrl+C.",
+      clear_ls_confirm: "Wyczyścić zapis localStorage i zresetować edytor?",
+      clear_ls_title: "Wyczyść localStorage",
+      clear_canvas_title: "Wyczyść",
+      clear_canvas_confirm: "Wyczyścić całe płótno?",
+      delete_sprite_title: "Usuń sprite",
+      delete_swatch_title: "Usuń swatch",
+      delete_confirm: "Usunąć",
+      delete_ok: "Usuń",
+      confirm: "Potwierdź",
+      cancel: "Anuluj",
+      ok: "OK",
+    },
+    en: {
+      brand_subtitle: "C64 sprite editor for dummies.",
+      collection: "Collection",
+      palette_c64: "C64 Palette",
+      palette_hint: "Pick slot (FG/MC1/MC2/OUT), then click a palette color to assign it.",
+      tools: "Tools",
+      wide_pixel: "2× wide pixel (multicolor)",
+      shape_fill: "Fill shapes",
+      transform_mode: "Transform mode",
+      clear: "Clear",
+      rmb_eraser_hint: "Right mouse button always erases (no tool switch).",
+      canvas: "Canvas",
+      custom_res: "Custom resolution",
+      sprites_w: "Width (sprites)",
+      sprites_h: "Height (sprites)",
+      px_w: "Width (px)",
+      px_h: "Height (px)",
+      preview_bg: "Preview background",
+      grid: "Grid",
+      local_storage: "Local storage",
+      save_now: "Save now",
+      clear_saved: "Clear saved",
+      ls_tip: "Tip: Export/Import in the top bar is a JSON backup.",
+      sprites: "Sprites",
+      sprites_hint: "Click a thumbnail to edit it.",
+      swatches: "Swatches",
+      swatches_hint: "Ctrl+C adds a cutout. Click a thumbnail to set Paste (multi-use).",
+      status_cursor: "Cursor",
+      status_tool: "Tool",
+      status_color: "Color",
+      status_mode: "Mode",
+      status_canvas: "Canvas",
+      hotkeys: "Hotkeys",
+      hk_colors: "Colors",
+      hk_tools: "Tools",
+      hk_edit: "Edit",
+      hk_view: "View",
+      hk_transform: "Transform",
+      hk_scroll: "Scroll",
+      hk_colors_desc: "`1` FG, `2` MC1, `3` MC2, `4` OUT",
+      hk_pen: "Pen",
+      hk_eraser: "Eraser",
+      hk_line: "Line",
+      hk_fill: "Fill",
+      hk_rect: "Rectangle",
+      hk_circle: "Circle",
+      hk_select: "Select",
+      hk_undo: "Undo",
+      hk_redo: "Redo",
+      hk_copy: "Copy (Select)",
+      hk_paste: "Paste",
+      hk_cancel: "Esc cancels paste/selection",
+      hk_grid: "Grid toggle",
+      hk_wide: "Wide pixel toggle",
+      hk_shape_fill: "Shape fill toggle",
+      hk_transform_mode: "Transform mode toggle",
+      hk_mirrorx: "Mirror X (draw)",
+      hk_mirrory: "Mirror Y (draw)",
+      hk_roll: "Roll (arrows in transform mode)",
+      hk_zoom: "Wheel = zoom",
+      hk_shift_wheel: "Shift+Wheel = slot 1–4",
+      hk_ctrl_wheel: "Ctrl/Cmd+Wheel = change active slot color",
+      ls_base: "Autosave: localStorage",
+      lang_title: "Language (PL/EN)",
+      export: "Export",
+      import: "Import",
+      save_png: "Save PNG",
+      help: "Help",
+      default_collection: "My collection",
+      project_placeholder: "Collection name…",
+      swatches_empty: "No swatches. Select a region (Select/Q) and press Ctrl+C.",
+      clear_ls_confirm: "Clear localStorage save and reset the editor?",
+      clear_ls_title: "Clear localStorage",
+      clear_canvas_title: "Clear",
+      clear_canvas_confirm: "Clear the entire canvas?",
+      delete_sprite_title: "Delete sprite",
+      delete_swatch_title: "Delete swatch",
+      delete_confirm: "Delete",
+      delete_ok: "Delete",
+      confirm: "Confirm",
+      cancel: "Cancel",
+      ok: "OK",
+    },
+  };
+
+  const t = (key) => I18N[lang]?.[key] ?? I18N.en[key] ?? key;
 
   buildPalette();
   syncSlotUi();
@@ -217,6 +397,8 @@
   render();
   isHydrating = false;
   applyTheme(theme);
+  applyLanguage();
+  ensureProjectName();
   syncProjectNameUi();
   syncLsInfo();
 
@@ -353,8 +535,15 @@
       scheduleSave();
     });
     btnHelp.addEventListener("click", () => openHelp());
+    btnHotkeys.addEventListener("click", () => openHotkeys());
+    btnLang.addEventListener("click", () => {
+      lang = lang === "pl" ? "en" : "pl";
+      applyLanguage();
+      scheduleSave();
+    });
     projectNameEl.addEventListener("input", () => {
-      projectName = (projectNameEl.value || "").trim() || "Moja kolekcja";
+      projectName = (projectNameEl.value || "").trim();
+      ensureProjectName();
       syncProjectNameUi();
       scheduleSave();
     });
@@ -364,9 +553,9 @@
     });
     btnLsClear.addEventListener("click", async (e) => {
       if (!e.shiftKey) {
-        const ok = await askConfirm("Wyczyścić zapis localStorage i zresetować edytor?", {
-          title: "Wyczyść localStorage",
-          okText: "Wyczyść",
+        const ok = await askConfirm(t("clear_ls_confirm"), {
+          title: t("clear_ls_title"),
+          okText: t("clear_saved"),
         });
         if (!ok) return;
       }
@@ -413,7 +602,10 @@
     });
 
     btnClear.addEventListener("click", async () => {
-      const ok = await askConfirm("Wyczyścić całe płótno?", { title: "Wyczyść", okText: "Wyczyść" });
+      const ok = await askConfirm(t("clear_canvas_confirm"), {
+        title: t("clear_canvas_title"),
+        okText: t("clear_canvas_title"),
+      });
       if (!ok) return;
       pushUndo();
       pixels.fill(TRANSPARENT);
@@ -535,6 +727,11 @@
 
     wrap.addEventListener("keydown", (e) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        openHotkeys();
+        e.preventDefault();
+        return;
+      }
       if (ctrl && (e.key === "z" || e.key === "Z")) {
         if (e.shiftKey) redo();
         else undo();
@@ -696,6 +893,19 @@
       e.preventDefault();
     });
 
+    btnKeysClose.addEventListener("click", () => closeHotkeys());
+    keysModal.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-close]")) closeHotkeys();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!keysOpen) return;
+      closeHotkeys();
+      e.preventDefault();
+    });
+
     btnConfirmClose.addEventListener("click", () => closeConfirm(false));
     btnConfirmCancel.addEventListener("click", () => closeConfirm(false));
     btnConfirmOk.addEventListener("click", () => closeConfirm(true));
@@ -731,11 +941,31 @@
     else btnHelp.focus();
   }
 
+  function openHotkeys() {
+    if (keysOpen) return;
+    keysPrevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    renderHotkeys();
+    keysModal.hidden = false;
+    keysOpen = true;
+    btnKeysClose.focus();
+  }
+
+  function closeHotkeys() {
+    if (!keysOpen) return;
+    keysModal.hidden = true;
+    keysOpen = false;
+    const f = keysPrevFocus;
+    keysPrevFocus = null;
+    if (f && document.contains(f)) f.focus();
+    else btnHotkeys.focus();
+  }
+
   function askConfirm(message, opts = {}) {
-    const title = opts.title ?? "Potwierdź";
-    const okText = opts.okText ?? "OK";
-    const cancelText = opts.cancelText ?? "Anuluj";
+    const title = opts.title ?? t("confirm");
+    const okText = opts.okText ?? t("ok");
+    const cancelText = opts.cancelText ?? t("cancel");
     if (helpOpen) closeHelp();
+    if (keysOpen) closeHotkeys();
 
     confirmTitle.textContent = title;
     confirmMsg.textContent = message;
@@ -1766,7 +1996,7 @@
     if (library.length === 0) {
       const empty = document.createElement("div");
       empty.className = "hint";
-      empty.textContent = "Brak swatchy. Zaznacz fragment (Select/Q) i Ctrl+C.";
+      empty.textContent = t("swatches_empty");
       libraryListEl.appendChild(empty);
       return;
     }
@@ -1816,7 +2046,10 @@
         e.preventDefault();
         e.stopPropagation();
         if (!e.shiftKey) {
-          const ok = await askConfirm("Usunąć ten swatch?", { title: "Usuń swatch", okText: "Usuń" });
+          const ok = await askConfirm(`${t("delete_confirm")}?`, {
+            title: t("delete_swatch_title"),
+            okText: t("delete_ok"),
+          });
           if (!ok) return;
         }
         removeFromLibrary(it.id);
@@ -2048,7 +2281,11 @@
           e.preventDefault();
           e.stopPropagation();
           if (!e.shiftKey) {
-            const ok = await askConfirm(`Usunąć ${sp.name}?`, { title: "Usuń sprite", okText: "Usuń" });
+            const msg = lang === "pl" ? `Usunąć ${sp.name}?` : `${t("delete_confirm")} ${sp.name}?`;
+            const ok = await askConfirm(msg, {
+              title: t("delete_sprite_title"),
+              okText: t("delete_ok"),
+            });
             if (!ok) return;
           }
           removeSprite(sp.id);
@@ -2114,6 +2351,7 @@
       ui: uiState,
       settings: {
         theme,
+        lang,
         activeSlot,
         colorSlots,
         tool,
@@ -2154,6 +2392,7 @@
 
     const s = state.settings || {};
     if (typeof s.theme === "string") theme = s.theme;
+    if (typeof s.lang === "string") lang = s.lang === "en" ? "en" : "pl";
     if (typeof s.activeSlot === "string") activeSlot = s.activeSlot;
     if (s.colorSlots && typeof s.colorSlots === "object") {
       colorSlots.fg = clampInt(s.colorSlots.fg, 0, 15);
@@ -2232,6 +2471,8 @@
 
     applyCollapseUi();
     applyTheme(theme);
+    applyLanguage();
+    ensureProjectName();
     syncProjectNameUi();
     syncLsInfo();
     syncSlotUi();
@@ -2261,8 +2502,97 @@
   }
 
   function syncLsInfo(extra) {
-    const base = `Auto-zapis: localStorage (${LS_KEY})`;
+    const base = `${t("ls_base")} (${LS_KEY})`;
     lsInfoEl.textContent = extra ? `${base} • ${extra}` : base;
+  }
+
+  function applyLanguage() {
+    document.documentElement.lang = lang === "en" ? "en" : "pl";
+    btnLang.textContent = (lang === "en" ? "EN" : "PL");
+    btnLang.title = t("lang_title");
+    keysTitle.textContent = t("hotkeys");
+    projectNameEl.placeholder = t("project_placeholder");
+    confirmTitle.textContent = t("confirm");
+    btnConfirmCancel.textContent = t("cancel");
+    btnConfirmOk.textContent = t("ok");
+    for (const node of document.querySelectorAll("[data-i18n]")) {
+      const k = node.getAttribute("data-i18n");
+      if (!k) continue;
+      node.textContent = t(k);
+    }
+    renderHotkeys();
+    syncLsInfo();
+    maybeTranslateDefaultProjectName();
+    renderLibrary();
+    renderSprites();
+  }
+
+  function ensureProjectName() {
+    if (projectName && projectName.trim()) return;
+    projectName = t("default_collection");
+    if (projectNameEl.value !== projectName) projectNameEl.value = projectName;
+  }
+
+  function isDefaultProjectName(name) {
+    const n = (name || "").trim();
+    if (!n) return true;
+    const pl = I18N.pl.default_collection;
+    const en = I18N.en.default_collection;
+    return n === pl || n === en;
+  }
+
+  function maybeTranslateDefaultProjectName() {
+    if (!isDefaultProjectName(projectName)) return;
+    const next = t("default_collection");
+    if (projectName === next) return;
+    projectName = next;
+    syncProjectNameUi();
+    scheduleSave();
+  }
+
+  function renderHotkeys() {
+    const section = (titleKey, items) => {
+      const lis = items
+        .map(([k, v]) => `<li><kbd>${k}</kbd> — ${v}</li>`)
+        .join("");
+      return `<h3>${t(titleKey)}</h3><ul>${lis}</ul>`;
+    };
+
+    keysContent.innerHTML = [
+      section("hk_colors", [["1–4", t("hk_colors_desc")]]),
+      section("hk_tools", [
+        ["P", t("hk_pen")],
+        ["E", t("hk_eraser")],
+        ["L", t("hk_line")],
+        ["F", t("hk_fill")],
+        ["R", t("hk_rect")],
+        ["C", t("hk_circle")],
+        ["Q", t("hk_select")],
+      ]),
+      section("hk_edit", [
+        ["Ctrl+Z", t("hk_undo")],
+        ["Ctrl+Y / Ctrl+Shift+Z", t("hk_redo")],
+        ["Ctrl+C", t("hk_copy")],
+        ["Ctrl+V", t("hk_paste")],
+        ["Esc", t("hk_cancel")],
+      ]),
+      section("hk_view", [
+        ["G", t("hk_grid")],
+        ["W", t("hk_wide")],
+        ["S", t("hk_shape_fill")],
+      ]),
+      section("hk_transform", [
+        ["T", t("hk_transform_mode")],
+        ["X", t("hk_mirrorx")],
+        ["Y", t("hk_mirrory")],
+        ["Arrows", t("hk_roll")],
+      ]),
+      section("hk_scroll", [
+        ["Wheel", t("hk_zoom")],
+        ["Shift+Wheel", t("hk_shift_wheel")],
+        ["Ctrl/Cmd+Wheel", t("hk_ctrl_wheel")],
+      ]),
+    ].join("");
   }
 
   function exportProject() {
