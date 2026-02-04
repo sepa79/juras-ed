@@ -2,7 +2,7 @@
 
 Prosty edytor HTML do rysowania pixel-artu/sprite’ów w palecie C64 i zapisywania do PNG z tłem transparentnym.
 
-## Założenia (jak rozumiem wymagania)
+## Założenia
 
 - **Paleta:** 16 kolorów C64 do rysowania.
 - **Pole rysowania:** 24×21 (rozmiar sprajta) lub wielokrotności (składanie wielu sprajtów w jednym obrazie), albo **dowolna rozdzielczość**.
@@ -16,11 +16,20 @@ Prosty edytor HTML do rysowania pixel-artu/sprite’ów w palecie C64 i zapisywa
 To jest statyczna strona – nie wymaga serwera.
 
 - Otwórz `index.html` w przeglądarce (Chrome/Edge/Firefox).
+- Albo odpal jako GitHub Pages: `https://sepa79.github.io/juras-ed/` (po włączeniu Pages w repo).
 - Stan edytora jest zapisywany w `localStorage`, więc odświeżenie (`F5`) nie powinno kasować pracy.
 - Import/Export:
   - `Export` / `Import` na górnym pasku zapisuje/ładuje projekt jako JSON.
   - `Sprites -> Import PNG` dodaje PNG jako nowy sprite (kolory mapowane do palety C64, alpha < 128 = transparent).
   - `Zapisz PNG` na górnym pasku eksportuje cały spritesheet (wszystkie sprite’y) do jednego PNG.
+
+## GitHub Pages
+
+Repo ma workflow do Pages (`.github/workflows/pages.yml`).
+
+1. Wejdź w repo na GitHub → **Settings → Pages**
+2. W **Source** wybierz **GitHub Actions**
+3. Po pushu na `main` strona powinna się zdeployować automatycznie
 
 ## Easter egg theme
 
@@ -28,7 +37,7 @@ To jest statyczna strona – nie wymaga serwera.
 
 ## Sterowanie
 
-- **Kolory (C64, jak na C64):** `1` = FG, `2` = MC1, `3` = MC2, `4` = OUT. Kliknięcie w palecie przypisuje kolor do aktywnego slotu.
+- **Kolory (C64, jak na C64):** `1` = FG, `2` = MC1, `3` = MC2, `4` = OUT (outline, teoretycznie jak 2gi sprite hires). Kliknięcie w palecie przypisuje kolor do aktywnego slotu.
 - **Narzędzia (hotkeye po angielsku):** Pen (`P`), Eraser (`E`), Line (`L`), Fill (`F`), Rectangle (`R`), Circle (`C`).
 - **Select / Copy / Paste:**
   - Select (`Q`) zaznaczenie prostokątne
@@ -53,10 +62,6 @@ To jest statyczna strona – nie wymaga serwera.
 - Włącz „Transform mode” (`T`) żeby pokazać przyciski dookoła płótna.
 - **Roll:** strzałki w overlay (albo klawisze `Arrow` gdy tryb jest włączony) przesuwają obraz o 1px z zawijaniem.
 - **Mirror (draw):** `X` (mirror X) i `Y` (mirror Y) odbijają rysowanie względem środka płótna.
-
-## OUT
-
-- Slot **OUT** działa jak zwykły slot koloru (wybierasz go `4`), nie jest automatycznie narzucany dla kształtów.
 
 ## Resize canvas
 

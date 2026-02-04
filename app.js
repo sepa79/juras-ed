@@ -67,6 +67,11 @@
   const btnRedo = el("btnRedo");
   const btnTheme = el("btnTheme");
   const fireCanvas = el("fireCanvas");
+  const btnHelp = el("btnHelp");
+  const helpModal = el("helpModal");
+  const btnHelpClose = el("btnHelpClose");
+  const helpText = el("helpText");
+  const helpContent = el("helpContent");
 
   const btnProjectExport = el("btnProjectExport");
   const btnProjectImport = el("btnProjectImport");
@@ -176,6 +181,8 @@
   let fireRunning = false;
   let fireAnim = null;
   let fireOnResize = null;
+  let helpOpen = false;
+  let helpPrevFocus = null;
 
   buildPalette();
   syncSlotUi();
@@ -316,6 +323,7 @@
       applyTheme(theme);
       scheduleSave();
     });
+    btnHelp.addEventListener("click", () => openHelp());
     btnProjectExport.addEventListener("click", () => exportProject());
     btnProjectImport.addEventListener("click", () => {
       fileProject.value = "";
@@ -621,6 +629,38 @@
         return;
       }
     });
+
+    btnHelpClose.addEventListener("click", () => closeHelp());
+    helpModal.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-close]")) closeHelp();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!helpOpen) return;
+      closeHelp();
+      e.preventDefault();
+    });
+  }
+
+  function openHelp() {
+    if (helpOpen) return;
+    helpPrevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    helpText.textContent = (helpContent.textContent || "").trim();
+    helpModal.hidden = false;
+    helpOpen = true;
+    btnHelpClose.focus();
+  }
+
+  function closeHelp() {
+    if (!helpOpen) return;
+    helpModal.hidden = true;
+    helpOpen = false;
+    const f = helpPrevFocus;
+    helpPrevFocus = null;
+    if (f && document.contains(f)) f.focus();
+    else btnHelp.focus();
   }
 
   function setInitialGrid() {
