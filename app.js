@@ -195,7 +195,7 @@
   };
   let isHydrating = true;
 
-  let theme = "light"; // light|dark (dark is the easter egg)
+  let theme = "light"; // light|dark-hell|dark-candles|dark-plain
   let fireRunning = false;
   let fireAnim = null;
   let fireOnResize = null;
@@ -530,7 +530,9 @@
       await exportSpritesheetPng();
     });
     btnTheme.addEventListener("click", () => {
-      theme = theme === "dark" ? "light" : "dark";
+      const order = ["light", "dark-hell", "dark-candles", "dark-plain"];
+      const idx = Math.max(0, order.indexOf(theme));
+      theme = order[(idx + 1) % order.length];
       applyTheme(theme);
       scheduleSave();
     });
@@ -2391,7 +2393,7 @@
     }
 
     const s = state.settings || {};
-    if (typeof s.theme === "string") theme = s.theme;
+    if (typeof s.theme === "string") theme = normalizeTheme(s.theme);
     if (typeof s.lang === "string") lang = s.lang === "en" ? "en" : "pl";
     if (typeof s.activeSlot === "string") activeSlot = s.activeSlot;
     if (s.colorSlots && typeof s.colorSlots === "object") {
@@ -2548,6 +2550,12 @@
     projectName = next;
     syncProjectNameUi();
     scheduleSave();
+  }
+
+  function normalizeTheme(value) {
+    if (value === "dark") return "dark-hell";
+    if (value === "dark-hell" || value === "dark-candles" || value === "dark-plain" || value === "light") return value;
+    return "light";
   }
 
   function renderHotkeys() {
@@ -2793,11 +2801,13 @@
   }
 
   function applyTheme(next) {
+    next = normalizeTheme(next);
     const root = document.documentElement;
-    if (next === "dark") root.dataset.theme = "dark";
-    else delete root.dataset.theme;
-    btnTheme.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
-    setFireEnabled(next === "dark");
+    if (next === "light") delete root.dataset.theme;
+    else root.dataset.theme = next;
+    btnTheme.setAttribute("aria-pressed", next !== "light" ? "true" : "false");
+    btnTheme.title = `Theme: ${next}`;
+    setFireEnabled(next === "dark-hell");
   }
 
   function setFireEnabled(enabled) {
