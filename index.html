@@ -252,10 +252,10 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v14h-2V5zm-6 6h14v2H5v-2z"/></svg>
               </button>
               <button id="btnImportSpritePng" class="iconBtn" type="button" title="Import PNG as sprite" aria-label="Import PNG as sprite">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2v11l4-4 1.41 1.41L12 16.83 6.59 10.41 8 9l4 4V2h0z"/></svg>
               </button>
               <button id="btnExportSpritePng" class="iconBtn" type="button" title="Export active sprite PNG" aria-label="Export active sprite PNG">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2v11l4-4 1.41 1.41L12 16.83 6.59 10.41 8 9l4 4V2h0z"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
               </button>
             </div>
             <div class="hint">Klik miniatury przełącza aktywną edycję.</div>
@@ -269,14 +269,14 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
             </button>
           </div>
-          <div id="swatchesBody">
-            <div class="row">
-              <button id="btnImportSwatchPng" class="iconBtn" type="button" title="Import PNG as swatch" aria-label="Import PNG as swatch">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
-              </button>
-            </div>
-            <div class="hint">Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).</div>
-            <div id="libraryList" class="library library--swatches"></div>
+            <div id="swatchesBody">
+              <div class="row">
+                <button id="btnImportSwatchPng" class="iconBtn" type="button" title="Import PNG as swatch" aria-label="Import PNG as swatch">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2v11l4-4 1.41 1.41L12 16.83 6.59 10.41 8 9l4 4V2h0z"/></svg>
+                </button>
+              </div>
+              <div class="hint">Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).</div>
+              <div id="libraryList" class="library library--swatches"></div>
           </div>
         </section>
       </aside>
@@ -330,6 +330,25 @@
         </div>
         <div id="helpBody" class="modal__body">
           <pre id="helpText" class="helpText"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirmModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__card" role="document">
+        <div class="modal__head">
+          <div id="confirmTitle" class="modal__title">Potwierdź</div>
+          <button id="btnConfirmClose" class="iconBtn" type="button" title="Zamknij" aria-label="Zamknij">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3 1.4 1.4z"/></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <div id="confirmMsg" class="confirmMsg"></div>
+          <div class="modal__actions">
+            <button id="btnConfirmCancel" class="btn" type="button">Anuluj</button>
+            <button id="btnConfirmOk" class="btn btn--primary" type="button">OK</button>
+          </div>
         </div>
       </div>
     </div>

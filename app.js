@@ -72,6 +72,12 @@
   const btnHelpClose = el("btnHelpClose");
   const helpText = el("helpText");
   const helpContent = el("helpContent");
+  const confirmModal = el("confirmModal");
+  const confirmTitle = el("confirmTitle");
+  const confirmMsg = el("confirmMsg");
+  const btnConfirmClose = el("btnConfirmClose");
+  const btnConfirmCancel = el("btnConfirmCancel");
+  const btnConfirmOk = el("btnConfirmOk");
 
   const btnProjectExport = el("btnProjectExport");
   const btnProjectImport = el("btnProjectImport");
@@ -183,6 +189,9 @@
   let fireOnResize = null;
   let helpOpen = false;
   let helpPrevFocus = null;
+  let confirmOpen = false;
+  let confirmPrevFocus = null;
+  let confirmResolve = null;
 
   buildPalette();
   syncSlotUi();
@@ -359,8 +368,8 @@
       await importPngAsSwatch(f);
     });
 
-    btnClear.addEventListener("click", () => {
-      const ok = confirm("Wyczyscic cale plotno?");
+    btnClear.addEventListener("click", async () => {
+      const ok = await askConfirm("Wyczyścić całe płótno?", { title: "Wyczyść", okText: "Wyczyść" });
       if (!ok) return;
       pushUndo();
       pixels.fill(TRANSPARENT);
@@ -642,6 +651,21 @@
       closeHelp();
       e.preventDefault();
     });
+
+    btnConfirmClose.addEventListener("click", () => closeConfirm(false));
+    btnConfirmCancel.addEventListener("click", () => closeConfirm(false));
+    btnConfirmOk.addEventListener("click", () => closeConfirm(true));
+    confirmModal.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-close]")) closeConfirm(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!confirmOpen) return;
+      closeConfirm(false);
+      e.preventDefault();
+    });
   }
 
   function openHelp() {
@@ -661,6 +685,40 @@
     helpPrevFocus = null;
     if (f && document.contains(f)) f.focus();
     else btnHelp.focus();
+  }
+
+  function askConfirm(message, opts = {}) {
+    const title = opts.title ?? "Potwierdź";
+    const okText = opts.okText ?? "OK";
+    const cancelText = opts.cancelText ?? "Anuluj";
+    if (helpOpen) closeHelp();
+
+    confirmTitle.textContent = title;
+    confirmMsg.textContent = message;
+    btnConfirmOk.textContent = okText;
+    btnConfirmCancel.textContent = cancelText;
+
+    confirmPrevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    confirmModal.hidden = false;
+    confirmOpen = true;
+
+    return new Promise((resolve) => {
+      confirmResolve = resolve;
+      btnConfirmOk.focus();
+    });
+  }
+
+  function closeConfirm(result) {
+    if (!confirmOpen) return;
+    confirmModal.hidden = true;
+    confirmOpen = false;
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    if (typeof resolve === "function") resolve(!!result);
+
+    const f = confirmPrevFocus;
+    confirmPrevFocus = null;
+    if (f && document.contains(f)) f.focus();
   }
 
   function setInitialGrid() {
@@ -1709,10 +1767,14 @@
       const del = document.createElement("button");
       del.type = "button";
       del.className = "iconBtn";
-      del.title = "Usuń";
-      del.addEventListener("click", (e) => {
+      del.title = "Usuń (Shift: bez potwierdzenia)";
+      del.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!e.shiftKey) {
+          const ok = await askConfirm("Usunąć ten swatch?", { title: "Usuń swatch", okText: "Usuń" });
+          if (!ok) return;
+        }
         removeFromLibrary(it.id);
       });
       del.innerHTML =
@@ -1796,8 +1858,6 @@
     const idx = sprites.findIndex((s) => s.id === id);
     if (idx < 0) return;
     const isActive = sprites[idx].id === activeSpriteId;
-    const ok = confirm(`Delete ${sprites[idx].name}?`);
-    if (!ok) return;
     sprites.splice(idx, 1);
     scheduleSave();
     if (sprites.length === 0) {
@@ -1913,10 +1973,14 @@
         const del = document.createElement("button");
         del.type = "button";
         del.className = "iconBtn";
-        del.title = "Delete";
-        del.addEventListener("click", (e) => {
+        del.title = "Delete (Shift: bez potwierdzenia)";
+        del.addEventListener("click", async (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (!e.shiftKey) {
+            const ok = await askConfirm(`Usunąć ${sp.name}?`, { title: "Usuń sprite", okText: "Usuń" });
+            if (!ok) return;
+          }
           removeSprite(sp.id);
         });
         del.innerHTML =
