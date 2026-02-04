@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JurasEd</title>
+    <link rel="icon" href="favicon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand__title">
+          <img class="brand__icon" src="favicon.png" alt="" aria-hidden="true" />
+          <span>JurasEd</span>
+          <span class="brand__motto">Tylko z łapy 😄</span>
+        </div>
+        <div class="brand__subtitle">Edytor C64 Sprite 'dla debili'.</div>
+      </div>
+      <div class="topbar__actions">
+        <button id="btnTheme" class="btn" type="button" aria-pressed="false" title="Theme (Light/Dark)">
+          <span class="themeDot" aria-hidden="true"></span>
+          <span class="themeText">Theme</span>
+        </button>
+        <button id="btnProjectExport" class="btn" type="button" title="Export project (JSON)">Export</button>
+        <button id="btnProjectImport" class="btn" type="button" title="Import project (JSON)">Import</button>
+        <button id="btnSave" class="btn btn--primary" type="button">Zapisz PNG</button>
+        <a class="btn" href="README.md" target="_blank" rel="noreferrer">Pomoc</a>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel">
+        <section class="card">
+          <h2 class="card__title">Paleta C64</h2>
+          <div class="colorSlots" aria-label="Skróty kolorów">
+            <button id="slotFg" class="btn slotBtn" type="button" aria-pressed="true" title="Foreground (1)">
+              <span class="slotLbl">FG</span>
+              <span id="slotFgSwatch" class="slotSwatch" aria-hidden="true"></span>
+            </button>
+            <button id="slotMc1" class="btn slotBtn" type="button" aria-pressed="false" title="Multi 1 (2)">
+              <span class="slotLbl">MC1</span>
+              <span id="slotMc1Swatch" class="slotSwatch" aria-hidden="true"></span>
+            </button>
+            <button id="slotMc2" class="btn slotBtn" type="button" aria-pressed="false" title="Multi 2 (3)">
+              <span class="slotLbl">MC2</span>
+              <span id="slotMc2Swatch" class="slotSwatch" aria-hidden="true"></span>
+            </button>
+            <button id="slotOut" class="btn slotBtn" type="button" aria-pressed="false" title="Outline (4)">
+              <span class="slotLbl">OUT</span>
+              <span id="slotOutSwatch" class="slotSwatch" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div id="palette" class="palette" role="radiogroup" aria-label="Paleta kolorów C64"></div>
+          <div class="row">
+            <div class="hint">Wybierz slot (FG/MC1/MC2/OUT), potem kliknij kolor w palecie, żeby go przypisać.</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 class="card__title">Narzędzia</h2>
+          <div class="row">
+            <label class="toggle toggleBtn">
+              <input id="widePixel" type="checkbox" />
+              <span class="toggleBox" aria-hidden="true"></span>
+              <span class="toggleText">2× wide pixel (multicolor)</span>
+            </label>
+          </div>
+          <div class="tools">
+            <button id="toolPen" class="btn toolBtn" type="button" aria-pressed="true" aria-label="Pen" title="Pen (P)">
+              <span class="srOnly">Pióro</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M3 21l3.75-1L19 7.75 16.25 5 4 17.25 3 21zm18.71-11.29a1 1 0 0 0 0-1.42L18.71 5.3a1 1 0 0 0-1.42 0L15.5 7.09 18.91 10.5l2.8-2.79z"/>
+              </svg>
+              <span class="toolText">Pen</span>
+            </button>
+            <button id="toolEraser" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Eraser" title="Eraser (E)">
+              <span class="srOnly">Gumka</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M16.24 3.56a2 2 0 0 0-2.83 0L3.56 13.41a2 2 0 0 0 0 2.83l4.2 4.2A2 2 0 0 0 9.17 21H20v-2h-6.17l7.41-7.41a2 2 0 0 0 0-2.83l-5-5zM8.76 19l-3.2-3.2 6.7-6.7 3.2 3.2L8.76 19z"/>
+              </svg>
+              <span class="toolText">Eraser</span>
+            </button>
+            <button id="toolLine" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Line" title="Line (L)">
+              <span class="srOnly">Linia</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M4 18.59L18.59 4 20 5.41 5.41 20 4 18.59z"/>
+                <circle cx="6" cy="18" r="2" fill="currentColor"/>
+                <circle cx="18" cy="6" r="2" fill="currentColor"/>
+              </svg>
+              <span class="toolText">Line</span>
+            </button>
+            <button id="toolFill" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Fill" title="Fill (F)">
+              <span class="srOnly">Fill</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <!-- bucket -->
+                <path fill="currentColor" d="M19.35 10.04l-5.39-5.39a1 1 0 0 0-1.41 0l-7.9 7.9a1 1 0 0 0-.29.7V18a2 2 0 0 0 2 2h4.75a1 1 0 0 0 .7-.29l7.54-7.54a1 1 0 0 0 0-1.41zM10.7 18H6.36v-3.93l6.9-6.9 3.93 3.93L10.7 18z"/>
+                <path fill="currentColor" d="M7 21h14v-2H7v2z"/>
+              </svg>
+              <span class="toolText">Fill</span>
+            </button>
+            <button id="toolRect" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Rectangle" title="Rectangle (R)">
+              <span class="srOnly">Prostokąt</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="2" d="M5 6h14v12H5z"/>
+              </svg>
+              <span class="toolText">Rect</span>
+            </button>
+            <button id="toolCircle" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Circle" title="Circle (C)">
+              <span class="srOnly">Koło</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span class="toolText">Circle</span>
+            </button>
+            <button id="toolSelect" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Select" title="Select (Q)">
+              <span class="srOnly">Zaznaczenie</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2" d="M6 6h12v12H6z"/>
+              </svg>
+              <span class="toolText">Select</span>
+            </button>
+            <button id="toolCopy" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Copy" title="Copy (Ctrl+C)" disabled>
+              <span class="srOnly">Kopiuj</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16h-9V7h9v14z"/>
+              </svg>
+              <span class="toolText">Copy</span>
+            </button>
+            <button id="toolPaste" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Paste" title="Paste (Ctrl+V)" disabled>
+              <span class="srOnly">Wklej</span>
+              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M19 4h-3.18C15.4 2.84 14.3 2 13 2h-2c-1.3 0-2.4.84-2.82 2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 0h2a1 1 0 0 1 1 1v1H10V5a1 1 0 0 1 1-1zm8 16H5V6h2v2h10V6h2v14z"/>
+              </svg>
+              <span class="toolText">Paste</span>
+            </button>
+          </div>
+          <div class="row">
+            <button id="btnUndo" class="btn" type="button" title="Undo (Ctrl+Z)" disabled>Undo</button>
+            <button id="btnRedo" class="btn" type="button" title="Redo (Ctrl+Y / Ctrl+Shift+Z)" disabled>Redo</button>
+          </div>
+          <div class="row">
+            <label class="toggle toggleBtn">
+              <input id="shapeFill" type="checkbox" />
+              <span class="toggleBox" aria-hidden="true"></span>
+              <span class="toggleText">Wypełniaj kształty</span>
+            </label>
+          </div>
+          <div class="row">
+            <button id="btnTransform" class="btn" type="button" aria-pressed="false" title="Transform mode (T)">Transform mode</button>
+            <button id="btnClear" class="btn btn--danger" type="button">Wyczyść</button>
+          </div>
+          <div class="hint">Prawy przycisk myszy zawsze działa jak gumka (bez zmiany narzędzia).</div>
+        </section>
+
+        <section class="card">
+          <h2 class="card__title">Płótno</h2>
+          <div class="row">
+            <label class="toggle toggleBtn">
+              <input id="customRes" type="checkbox" />
+              <span class="toggleBox" aria-hidden="true"></span>
+              <span class="toggleText">Dowolna rozdzielczość</span>
+            </label>
+          </div>
+          <div id="spriteControls" class="grid2">
+            <label class="field">
+              <span class="field__label">Szerokość (sprajty)</span>
+              <input id="spritesX" class="field__input" type="number" min="1" max="8" value="1" />
+            </label>
+            <label class="field">
+              <span class="field__label">Wysokość (sprajty)</span>
+              <input id="spritesY" class="field__input" type="number" min="1" max="8" value="1" />
+            </label>
+          </div>
+          <div id="customControls" class="grid2" hidden>
+            <label class="field">
+              <span class="field__label">Szerokość (px)</span>
+              <input id="customW" class="field__input" type="number" min="1" max="512" value="24" />
+            </label>
+            <label class="field">
+              <span class="field__label">Wysokość (px)</span>
+              <input id="customH" class="field__input" type="number" min="1" max="512" value="21" />
+            </label>
+          </div>
+          <div class="grid2">
+            <label class="field">
+              <span class="field__label">Zoom (px)</span>
+              <input id="zoom" class="field__input" type="range" min="4" max="64" value="16" />
+            </label>
+            <label class="field">
+              <span class="field__label">Tło podglądu</span>
+              <input id="bgColor" class="field__input field__input--color" type="color" value="#203040" />
+            </label>
+          </div>
+          <label class="toggle toggleBtn">
+            <input id="showGrid" type="checkbox" checked />
+            <span class="toggleBox" aria-hidden="true"></span>
+            <span class="toggleText">Siatka</span>
+          </label>
+        </section>
+
+      </aside>
+
+      <section class="stage">
+        <div class="canvasWrap" id="canvasWrap" tabindex="0" aria-label="Pole rysowania">
+          <canvas id="canvas"></canvas>
+          <div id="transformOverlay" class="overlay" hidden>
+            <div class="overlayBar overlayBar--top" aria-label="Mirror drawing">
+              <button id="btnMirrorX" class="overlayBtn" type="button" aria-pressed="false" title="Mirror X (draw)">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M11 2h2v20h-2V2z"/>
+                  <path fill="currentColor" d="M4 7h6v2H4V7zm0 8h6v2H4v-2zm10-8h6v2h-6V7zm0 8h6v2h-6v-2z"/>
+                </svg>
+              </button>
+              <button id="btnMirrorY" class="overlayBtn" type="button" aria-pressed="false" title="Mirror Y (draw)">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M2 11h20v2H2v-2z"/>
+                  <path fill="currentColor" d="M7 4h2v6H7V4zm8 0h2v6h-2V4zM7 14h2v6H7v-6zm8 0h2v6h-2v-6z"/>
+                </svg>
+              </button>
+            </div>
+            <div class="overlayBar overlayBar--left" aria-label="Roll">
+              <button id="btnRollUp" class="overlayBtn" type="button" title="Roll up">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5l7 7H5l7-7z"/></svg>
+              </button>
+              <button id="btnRollDown" class="overlayBtn" type="button" title="Roll down">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 19l-7-7h14l-7 7z"/></svg>
+              </button>
+            </div>
+            <div class="overlayBar overlayBar--right" aria-label="Roll">
+              <button id="btnRollLeft" class="overlayBtn" type="button" title="Roll left">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 12l7-7v14l-7-7z"/></svg>
+              </button>
+              <button id="btnRollRight" class="overlayBtn" type="button" title="Roll right">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 12l-7 7V5l7 7z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <aside class="panel panel--right" aria-label="Library">
+        <section class="card">
+          <div class="card__head">
+            <h2 class="card__title">Sprites</h2>
+            <button id="btnToggleSprites" class="iconBtn collapseBtn" type="button" aria-expanded="true" title="Collapse">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
+            </button>
+          </div>
+          <div id="spritesBody">
+            <div class="row">
+              <button id="btnAddSprite" class="iconBtn" type="button" title="Add sprite" aria-label="Add sprite">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v14h-2V5zm-6 6h14v2H5v-2z"/></svg>
+              </button>
+              <button id="btnImportSpritePng" class="iconBtn" type="button" title="Import PNG as sprite" aria-label="Import PNG as sprite">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
+              </button>
+              <button id="btnExportSpritePng" class="iconBtn" type="button" title="Export active sprite PNG" aria-label="Export active sprite PNG">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2v11l4-4 1.41 1.41L12 16.83 6.59 10.41 8 9l4 4V2h0z"/></svg>
+              </button>
+            </div>
+            <div class="hint">Klik miniatury przełącza aktywną edycję.</div>
+            <div id="spriteList" class="library library--sprites"></div>
+          </div>
+        </section>
+        <section class="card">
+          <div class="card__head">
+            <h2 class="card__title">Swatches</h2>
+            <button id="btnToggleSwatches" class="iconBtn collapseBtn" type="button" aria-expanded="true" title="Collapse">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
+            </button>
+          </div>
+          <div id="swatchesBody">
+            <div class="row">
+              <button id="btnImportSwatchPng" class="iconBtn" type="button" title="Import PNG as swatch" aria-label="Import PNG as swatch">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
+              </button>
+            </div>
+            <div class="hint">Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).</div>
+            <div id="libraryList" class="library library--swatches"></div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="statusbar" aria-label="Status">
+      <div class="statuscard">
+        <div class="statusgrid">
+          <div class="kv"><div class="k">Cursor</div><div id="statusCursor" class="v">—</div></div>
+          <div class="kv"><div class="k">Tool</div><div id="statusTool" class="v">—</div></div>
+          <div class="kv"><div class="k">Color</div><div id="statusColor" class="v">—</div></div>
+          <div class="kv"><div class="k">Mode</div><div id="statusMode" class="v">—</div></div>
+          <div class="kv"><div class="k">Canvas</div><div id="statusCanvas" class="v">—</div></div>
+        </div>
+      </div>
+    </footer>
+
+    <div class="evilLayer" aria-hidden="true">
+      <svg class="evilSigil" viewBox="0 0 200 200">
+        <defs>
+          <radialGradient id="sigilGlow" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stop-color="rgba(255,45,45,.45)"/>
+            <stop offset="55%" stop-color="rgba(255,45,45,.15)"/>
+            <stop offset="100%" stop-color="rgba(255,45,45,0)"/>
+          </radialGradient>
+        </defs>
+        <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(255,45,45,.25)" stroke-width="2"/>
+        <circle cx="100" cy="100" r="62" fill="none" stroke="rgba(255,45,45,.18)" stroke-width="2"/>
+        <circle cx="100" cy="100" r="96" fill="url(#sigilGlow)"/>
+        <!-- pentagram (not a filled star) -->
+        <path d="M100 28 L145.5 162 L30.3 78.3 L169.7 78.3 L54.5 162 Z"
+              fill="none" stroke="rgba(255,45,45,.38)" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M100 28 L54.5 162 M145.5 162 L30.3 78.3 M30.3 78.3 L169.7 78.3 M169.7 78.3 L54.5 162"
+              fill="none" stroke="rgba(255,45,45,.22)" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <canvas id="fireCanvas" class="evilFire"></canvas>
+    </div>
+
+    <input id="fileProject" type="file" accept="application/json" hidden />
+    <input id="fileSpritePng" type="file" accept="image/png" hidden />
+    <input id="fileSwatchPng" type="file" accept="image/png" hidden />
+
+    <script src="app.js"></script>
+  </body>
+</html>
