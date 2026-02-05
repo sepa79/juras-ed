@@ -99,6 +99,7 @@
 
   const fileProject = el("fileProject");
   const fileSpd = el("fileSpd");
+  const fileKoala = el("fileKoala");
   const fileSpritePng = el("fileSpritePng");
   const fileSwatchPng = el("fileSwatchPng");
   const ioModal = el("ioModal");
@@ -842,6 +843,7 @@
       io_export: "Export",
       io_project_json: "Projekt (JSON)",
       io_spritepad_spd: "SpritePad (.spd)",
+      io_koala: "Koala (.koa/.kla)",
       io_sprite_png: "Aktywny sprite (PNG)",
       io_sprite_png_import: "PNG → sprite",
       io_swatch_png_import: "PNG → swatch",
@@ -946,6 +948,7 @@
       io_export: "Export",
       io_project_json: "Project (JSON)",
       io_spritepad_spd: "SpritePad (.spd)",
+      io_koala: "Koala (.koa/.kla)",
       io_sprite_png: "Active sprite (PNG)",
       io_sprite_png_import: "PNG → sprite",
       io_swatch_png_import: "PNG → swatch",
@@ -1284,6 +1287,12 @@
       const f = fileSpd.files?.[0];
       if (!f) return;
       await importSpritePadSpd(f);
+    });
+
+    fileKoala.addEventListener("change", async () => {
+      const f = fileKoala.files?.[0];
+      if (!f) return;
+      await importKoalaFile(f);
     });
     fileSpritePng.addEventListener("change", async () => {
       const f = fileSpritePng.files?.[0];
@@ -1828,6 +1837,20 @@
             fileSpd.click();
           } else {
             await exportSpritePadSpd();
+          }
+        },
+      },
+      {
+        id: "koala_kla",
+        label: "Koala (.koa/.kla)",
+        i18n: "io_koala",
+        action: "both",
+        run: async (kind) => {
+          if (kind === "import") {
+            fileKoala.value = "";
+            fileKoala.click();
+          } else {
+            await exportKoala();
           }
         },
       },
@@ -4374,6 +4397,148 @@
       setActiveSprite(imported[0].id);
       saveState();
     }
+  }
+
+  function koalaOffsets(bytes) {
+    // Koala Painter: typically 10003 bytes including 2-byte load address ($6000).
+    // Layout (after optional load addr): bitmap 8000, screen 1000, color 1000, bg 1.
+    const len = bytes.length | 0;
+    const hasLoad = len === 10003 || (len >= 10003 && bytes[0] === 0x00 && bytes[1] === 0x60);
+    const base = hasLoad ? 2 : 0;
+    const needed = base + 8000 + 1000 + 1000 + 1;
+    if (len < needed) return null;
+    return { base, bmp: base, screen: base + 8000, color: base + 9000, bg: base + 10000 };
+  }
+
+  function koalaBitmapIndex(xByte, y) {
+    // Koala Painter file bitmap layout (8000 bytes) is CELL-MAJOR:
+    // For each 8×8 cell (40×25), store 8 rows (y&7) sequentially.
+    // idx = ((cellY*40 + xByte) * 8) + rowInCell
+    return (((y >> 3) * 40 + xByte) * 8) + (y & 7);
+  }
+
+  async function exportKoala() {
+    const sp = getActiveSprite();
+    if (!sp || !isMcImage(sp)) {
+      await showAlert("Koala eksport: wybierz obrazek MC (320×200).", { title: "Koala" });
+      return;
+    }
+    if (sp.w !== 320 || sp.h !== 200) {
+      await showAlert(`Koala eksport: wymagane 320×200, a tu jest ${sp.w}×${sp.h}.`, { title: "Koala" });
+      return;
+    }
+    const c64 = ensureMcImageCells(sp);
+    const slots = c64?.slots || colorSlots;
+    const bg = clampInt(slots.bg ?? slots.out ?? colorSlots.out, 0, 15);
+
+    const out = new Uint8Array(10003);
+    out[0] = 0x00;
+    out[1] = 0x60; // load address
+
+    // bitmap
+    for (let y = 0; y < 200; y++) {
+      const row = y * 320;
+      for (let xb = 0; xb < 40; xb++) {
+        const x0 = xb * 8;
+        const v0 = clampInt(c64.mc[row + x0] | 0, 0, 3);
+        const v1 = clampInt(c64.mc[row + x0 + 2] | 0, 0, 3);
+        const v2 = clampInt(c64.mc[row + x0 + 4] | 0, 0, 3);
+        const v3 = clampInt(c64.mc[row + x0 + 6] | 0, 0, 3);
+        const b = (v0 << 6) | (v1 << 4) | (v2 << 2) | v3;
+        out[2 + koalaBitmapIndex(xb, y)] = b & 0xff;
+      }
+    }
+
+    // screen + color
+    const { cw, ch } = mcCellDims(sp);
+    if (cw !== 40 || ch !== 25) {
+      console.warn("[JurasEd] Koala export: unexpected cell grid:", cw, ch);
+    }
+    const count = Math.max(1, cw * ch);
+    for (let ci = 0; ci < count; ci++) {
+      out[2 + 8000 + ci] = ((clampInt(c64.cellA[ci] | 0, 0, 15) & 0x0f) << 4) | (clampInt(c64.cellB[ci] | 0, 0, 15) & 0x0f);
+      out[2 + 9000 + ci] = clampInt(c64.cellC[ci] | 0, 0, 15) & 0x0f;
+    }
+    out[2 + 10000] = bg & 0x0f;
+
+    const safeName = (sp.name || "koala").trim().replaceAll(" ", "_") || "koala";
+    const blob = new Blob([out], { type: "application/octet-stream" });
+    downloadBlob(blob, `${safeName}.kla`);
+  }
+
+  async function importKoalaFile(file) {
+    let bytes;
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch {
+      await showAlert("Nie udało się wczytać pliku Koala (.koa/.kla).", { title: "Koala" });
+      return;
+    }
+    const off = koalaOffsets(bytes);
+    if (!off) {
+      await showAlert("To nie wygląda na plik Koala (.koa/.kla).", { title: "Koala" });
+      return;
+    }
+
+    const id = makeId("mcimg");
+    const baseName = (file?.name || "Koala").replace(/\.(koa|kla)$/i, "");
+    const name = baseName.trim() ? `MC: ${baseName.trim()}` : `MC ${sprites.length + 1}`;
+    const w = 320;
+    const h = 200;
+    const cheat = new Uint8Array(w * h).fill(TRANSPARENT);
+    const sp = { id, kind: DOC_KIND_MC_IMAGE, name, w, h, pixels: cheat };
+    sp.c64 = {
+      w,
+      h,
+      slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out, bg: clampInt(bytes[off.bg] | 0, 0, 15) },
+      mc: new Uint8Array(w * h).fill(0),
+      out: new Uint8Array(w * h).fill(0),
+      cheat,
+      lastLayer: "mc",
+      lastNonCheatLayer: "mc",
+    };
+    sp.vis = { mc: true, out: false, cheat: true };
+    sprites.push(sp);
+
+    const c64 = ensureMcImageCells(sp);
+    // cell colors
+    const { cw, ch } = mcCellDims(sp);
+    for (let ci = 0; ci < cw * ch; ci++) {
+      const sc = bytes[off.screen + ci] | 0;
+      c64.cellA[ci] = (sc >> 4) & 0x0f;
+      c64.cellB[ci] = sc & 0x0f;
+      c64.cellC[ci] = (bytes[off.color + ci] | 0) & 0x0f;
+    }
+
+    // bitmap -> codes (0..3)
+    for (let y = 0; y < 200; y++) {
+      const row = y * 320;
+      for (let xb = 0; xb < 40; xb++) {
+        const b = bytes[off.bmp + koalaBitmapIndex(xb, y)] | 0;
+        const v0 = (b >> 6) & 3;
+        const v1 = (b >> 4) & 3;
+        const v2 = (b >> 2) & 3;
+        const v3 = b & 3;
+        const x0 = xb * 8;
+        // each multicolor pixel is double width
+        c64.mc[row + x0 + 0] = v0;
+        c64.mc[row + x0 + 1] = v0;
+        c64.mc[row + x0 + 2] = v1;
+        c64.mc[row + x0 + 3] = v1;
+        c64.mc[row + x0 + 4] = v2;
+        c64.mc[row + x0 + 5] = v2;
+        c64.mc[row + x0 + 6] = v3;
+        c64.mc[row + x0 + 7] = v3;
+      }
+    }
+
+    // Update current UI/global slots with imported BG for convenience.
+    colorSlots.out = clampInt(c64.slots.bg ?? colorSlots.out, 0, 15);
+    syncSlotUi();
+    syncPaletteSelection();
+
+    setActiveSprite(id);
+    saveState();
   }
 
   function exportProject() {
