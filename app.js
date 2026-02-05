@@ -1,4 +1,4 @@
-(() => {
+(async () => {
   "use strict";
 
   const SPRITE_W = 24;
@@ -61,6 +61,7 @@
   const zoomEl = el("zoom");
   const bgColorEl = el("bgColor");
   const showGridEl = el("showGrid");
+  const grid8El = el("grid8");
   const widePixelEl = el("widePixel");
   const shapeFillEl = el("shapeFill");
   const btnTransform = el("btnTransform");
@@ -123,6 +124,7 @@
   const btnMirrorY = el("btnMirrorY");
 
   const btnAddSprite = el("btnAddSprite");
+  const btnAddMcImage = el("btnAddMcImage");
   const spriteListEl = el("spriteList");
   const btnToggleSprites = el("btnToggleSprites");
   const btnToggleSwatches = el("btnToggleSwatches");
@@ -181,6 +183,7 @@
   let zoom = clampInt(zoomEl.value, 4, 64);
   let bgColor = bgColorEl.value || "#203040";
   let showGrid = !!showGridEl.checked;
+  let grid8 = !!grid8El.checked;
   let widePixel = !!widePixelEl.checked;
   let shapeFill = !!shapeFillEl.checked;
   let transformMode = false;
@@ -193,6 +196,19 @@
 
   const undoStack = [];
   const redoStack = [];
+
+  function resizeCellLayer(prev, prevCw, prevCh, nextCw, nextCh, fill) {
+    const out = new Uint8Array(nextCw * nextCh);
+    out.fill(fill);
+    const copyW = Math.min(prevCw, nextCw);
+    const copyH = Math.min(prevCh, nextCh);
+    for (let y = 0; y < copyH; y++) {
+      const srcOff = y * prevCw;
+      const dstOff = y * nextCw;
+      for (let x = 0; x < copyW; x++) out[dstOff + x] = prev[srcOff + x];
+    }
+    return out;
+  }
 
   function captureAllLayersSnapshot() {
     const sp = getActiveSprite();
@@ -208,7 +224,12 @@
   }
 
   function pushUndo(snapshot = null) {
-    undoStack.push(snapshot ?? pixels.slice());
+    const sp = getActiveSprite();
+    if (!snapshot && sp && isMcImage(sp) && getEditLayer() === "mc") {
+      undoStack.push(captureMcImageSnapshot());
+    } else {
+      undoStack.push(snapshot ?? pixels.slice());
+    }
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
     redoStack.length = 0;
     updateHistoryButtons();
@@ -226,6 +247,22 @@
       c64.mc = snap.mc.slice();
       c64.out = snap.out.slice();
       c64.cheat = snap.cheat.slice();
+      sp.pixels = c64.cheat;
+      c64.lastLayer = snap.layer || "mc";
+      setC64Layer(c64.lastLayer, { resetHistory: false });
+      renderSprites();
+      return;
+    }
+    if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "mcimg") {
+      const sp = getActiveSprite();
+      if (!sp || !isMcImage(sp)) return;
+      const c64 = ensureMcImageCells(sp);
+      c64.mc = snap.mc.slice();
+      c64.cheat = snap.cheat.slice();
+      if (c64.slots) c64.slots.bg = clampInt(snap.bg ?? c64.slots.bg ?? colorSlots.out, 0, 15);
+      c64.cellA = snap.cellA.slice();
+      c64.cellB = snap.cellB.slice();
+      c64.cellC = snap.cellC.slice();
       sp.pixels = c64.cheat;
       c64.lastLayer = snap.layer || "mc";
       setC64Layer(c64.lastLayer, { resetHistory: false });
@@ -259,6 +296,236 @@
   let isHydrating = true;
 
   const editorMode = "c64_cheat"; // fixed (modes removed)
+  const DOC_KIND_SPRITE = "sprite";
+  const DOC_KIND_MC_IMAGE = "mc_image";
+
+  function isMcImage(sp) {
+    return !!sp && sp.kind === DOC_KIND_MC_IMAGE;
+  }
+
+  function mcCellDims(sp) {
+    const w = clampInt(sp?.w, 1, MAX_SIZE);
+    const h = clampInt(sp?.h, 1, MAX_SIZE);
+    return { cw: Math.max(1, ((w + 7) / 8) | 0), ch: Math.max(1, ((h + 7) / 8) | 0) };
+  }
+
+  function ensureMcImageCells(sp) {
+    if (!isMcImage(sp)) return null;
+    const c64 = ensureC64Layers(sp);
+    if (!c64) return null;
+    const { cw, ch } = mcCellDims(sp);
+    const count = cw * ch;
+    const prevCw = clampInt(c64.cellW ?? cw, 1, 4096);
+    const prevCh = clampInt(c64.cellH ?? ch, 1, 4096);
+    c64.cellW = cw;
+    c64.cellH = ch;
+    if (!(c64.cellA instanceof Uint8Array)) c64.cellA = new Uint8Array(count).fill(clampInt(colorSlots.mc1, 0, 15));
+    if (!(c64.cellB instanceof Uint8Array)) c64.cellB = new Uint8Array(count).fill(clampInt(colorSlots.mc2, 0, 15));
+    if (!(c64.cellC instanceof Uint8Array)) c64.cellC = new Uint8Array(count).fill(clampInt(colorSlots.fg, 0, 15));
+    if (c64.cellA.length !== count) c64.cellA = resizeCellLayer(c64.cellA, prevCw, prevCh, cw, ch, clampInt(colorSlots.mc1, 0, 15));
+    if (c64.cellB.length !== count) c64.cellB = resizeCellLayer(c64.cellB, prevCw, prevCh, cw, ch, clampInt(colorSlots.mc2, 0, 15));
+    if (c64.cellC.length !== count) c64.cellC = resizeCellLayer(c64.cellC, prevCw, prevCh, cw, ch, clampInt(colorSlots.fg, 0, 15));
+    return c64;
+  }
+
+  function mcCellIndexAt(sp, x, y) {
+    const { cw, ch } = mcCellDims(sp);
+    const cx = clampInt((x / 8) | 0, 0, cw - 1);
+    const cy = clampInt((y / 8) | 0, 0, ch - 1);
+    return cy * cw + cx;
+  }
+
+  function captureMcImageSnapshot() {
+    const sp = getActiveSprite();
+    if (!sp || !isMcImage(sp)) {
+      return { type: "mcimg", layer: getEditLayer(), mc: new Uint8Array(0), cheat: new Uint8Array(0), bg: 0, cellA: new Uint8Array(0), cellB: new Uint8Array(0), cellC: new Uint8Array(0) };
+    }
+    const c64 = ensureMcImageCells(sp);
+    return {
+      type: "mcimg",
+      layer: getEditLayer(),
+      mc: c64.mc.slice(),
+      cheat: c64.cheat.slice(),
+      bg: clampInt(c64.slots?.bg ?? colorSlots.out, 0, 15),
+      cellA: c64.cellA.slice(),
+      cellB: c64.cellB.slice(),
+      cellC: c64.cellC.slice(),
+    };
+  }
+
+  function mcImageDisplayedColorAt(sp, x, y) {
+    const c64 = ensureMcImageCells(sp);
+    const idx = y * sp.w + x;
+    const v = c64.mc[idx] | 0;
+    if (v === 0) return clampInt(c64.slots.bg ?? colorSlots.out, 0, 15);
+    const ci = mcCellIndexAt(sp, x, y);
+    if (v === 1) return clampInt(c64.cellA[ci] | 0, 0, 15);
+    if (v === 2) return clampInt(c64.cellB[ci] | 0, 0, 15);
+    return clampInt(c64.cellC[ci] | 0, 0, 15);
+  }
+
+  function mcImageCountCodesInCell(sp, ci) {
+    const c64 = ensureMcImageCells(sp);
+    const { cw } = mcCellDims(sp);
+    const cx = ci % cw;
+    const cy = (ci / cw) | 0;
+    const x0 = cx * 8;
+    const y0 = cy * 8;
+    let a = 0;
+    let b = 0;
+    let c = 0;
+    const x1 = Math.min(sp.w, x0 + 8);
+    const y1 = Math.min(sp.h, y0 + 8);
+    for (let y = y0; y < y1; y++) {
+      const row = y * sp.w;
+      for (let x = x0; x < x1; x++) {
+        const v = c64.mc[row + x] | 0;
+        if (v === 1) a++;
+        else if (v === 2) b++;
+        else if (v === 3) c++;
+      }
+    }
+    return { a, b, c };
+  }
+
+  function mcImageCodeForDesiredColor(sp, x, y, desiredColor) {
+    const c64 = ensureMcImageCells(sp);
+    const bg = clampInt(c64.slots.bg ?? colorSlots.out, 0, 15);
+    if (desiredColor == null || desiredColor === bg) return 0;
+    const ci = mcCellIndexAt(sp, x, y);
+    const col = clampInt(desiredColor, 0, 15);
+    if ((c64.cellA[ci] | 0) === col) return 1;
+    if ((c64.cellB[ci] | 0) === col) return 2;
+    if ((c64.cellC[ci] | 0) === col) return 3;
+    const counts = mcImageCountCodesInCell(sp, ci);
+    // Evict the least-used slot in this 8x8 cell. Tie-break: A->B->C.
+    let victim = 1;
+    let best = counts.a;
+    if (counts.b < best) {
+      best = counts.b;
+      victim = 2;
+    }
+    if (counts.c < best) {
+      best = counts.c;
+      victim = 3;
+    }
+    if (victim === 1) c64.cellA[ci] = col;
+    else if (victim === 2) c64.cellB[ci] = col;
+    else c64.cellC[ci] = col;
+    return victim;
+  }
+
+  function mcImageSetPixel(x, y, desiredColor) {
+    const sp = getActiveSprite();
+    if (!sp || !isMcImage(sp) || getEditLayer() !== "mc") return false;
+    let changed = false;
+    for (const [xx, yy] of mirrorPoints(x, y)) {
+      const code = mcImageCodeForDesiredColor(sp, xx, yy, desiredColor);
+      changed = setPixelRaw(xx, yy, code) || changed;
+    }
+    return changed;
+  }
+
+  function mcImageStamp(x, y, desiredColor) {
+    if (!widePixel) return mcImageSetPixel(x, y, desiredColor);
+    const xx = x - (x % 2);
+    let changed = false;
+    changed = mcImageSetPixel(xx, y, desiredColor) || changed;
+    if (xx + 1 < gridW) changed = mcImageSetPixel(xx + 1, y, desiredColor) || changed;
+    return changed;
+  }
+
+  function mcImageDrawLine(x0, y0, x1, y1, desiredColor) {
+    let changed = false;
+    for (const [x, y] of bresenham(x0, y0, x1, y1)) changed = mcImageStamp(x, y, desiredColor) || changed;
+    return changed;
+  }
+
+  function mcImageDrawRect(x0, y0, x1, y1, desiredColor, opts) {
+    const fill = !!opts?.fill;
+    const left = Math.min(x0, x1);
+    const right = Math.max(x0, x1);
+    const top = Math.min(y0, y1);
+    const bottom = Math.max(y0, y1);
+    let changed = false;
+    if (fill) {
+      for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) changed = mcImageStamp(x, y, desiredColor) || changed;
+      return changed;
+    }
+    for (let x = left; x <= right; x++) {
+      changed = mcImageStamp(x, top, desiredColor) || changed;
+      changed = mcImageStamp(x, bottom, desiredColor) || changed;
+    }
+    for (let y = top; y <= bottom; y++) {
+      changed = mcImageStamp(left, y, desiredColor) || changed;
+      changed = mcImageStamp(right, y, desiredColor) || changed;
+    }
+    return changed;
+  }
+
+  function mcImageDrawCircle(x0, y0, x1, y1, desiredColor, opts) {
+    const fill = !!opts?.fill;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const r = Math.max(0, Math.floor(Math.sqrt(dx * dx + dy * dy)));
+    if (r === 0) return mcImageStamp(x0, y0, desiredColor);
+    if (!fill) {
+      let changed = false;
+      for (const [x, y] of previewCircle(x0, y0, x1, y1)) changed = mcImageStamp(x, y, desiredColor) || changed;
+      return changed;
+    }
+    let changed = false;
+    let x = r;
+    let y = 0;
+    let err = 1 - x;
+    while (x >= y) {
+      for (let ix = x0 - x; ix <= x0 + x; ix++) {
+        changed = mcImageStamp(ix, y0 + y, desiredColor) || changed;
+        changed = mcImageStamp(ix, y0 - y, desiredColor) || changed;
+      }
+      for (let ix = x0 - y; ix <= x0 + y; ix++) {
+        changed = mcImageStamp(ix, y0 + x, desiredColor) || changed;
+        changed = mcImageStamp(ix, y0 - x, desiredColor) || changed;
+      }
+      y++;
+      if (err < 0) err += 2 * y + 1;
+      else {
+        x--;
+        err += 2 * (y - x) + 1;
+      }
+    }
+    return changed;
+  }
+
+  function mcImageFloodFill(x, y, desiredColor) {
+    const sp = getActiveSprite();
+    if (!sp || !isMcImage(sp) || getEditLayer() !== "mc") return false;
+    const c64 = ensureMcImageCells(sp);
+    const target = mcImageDisplayedColorAt(sp, x, y);
+    const bg = clampInt(c64.slots.bg ?? colorSlots.out, 0, 15);
+    const desiredIdx = desiredColor == null ? bg : clampInt(desiredColor, 0, 15);
+    if (desiredIdx === target) return false;
+
+    const w = sp.w;
+    const h = sp.h;
+    const visited = new Uint8Array(w * h);
+    const stack = [y * w + x];
+    let changed = false;
+    while (stack.length) {
+      const idx = stack.pop();
+      if (visited[idx]) continue;
+      visited[idx] = 1;
+      const px = idx % w;
+      const py = (idx / w) | 0;
+      if (mcImageDisplayedColorAt(sp, px, py) !== target) continue;
+      changed = mcImageStamp(px, py, desiredColor) || changed;
+      if (px > 0) stack.push(idx - 1);
+      if (px + 1 < w) stack.push(idx + 1);
+      if (py > 0) stack.push(idx - w);
+      if (py + 1 < h) stack.push(idx + w);
+    }
+    return changed;
+  }
 
   function getActiveSprite() {
     return sprites.find((s) => s.id === activeSpriteId) || null;
@@ -289,6 +556,7 @@
           mc1: clampInt(colorSlots.mc1, 0, 15),
           mc2: clampInt(colorSlots.mc2, 0, 15),
           out: clampInt(colorSlots.out, 0, 15),
+          ...(isMcImage(sp) ? { bg: clampInt(colorSlots.out, 0, 15) } : {}),
         },
         mc: new Uint8Array(len).fill(0), // 0=transparent, 1=MC1, 2=MC2, 3=FG
         out: new Uint8Array(len).fill(0), // 0=transparent, 1=OUT mask
@@ -303,6 +571,10 @@
     // Ensure slots exist.
     if (!sp.c64.slots || typeof sp.c64.slots !== "object") {
       sp.c64.slots = { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out };
+    }
+    if (isMcImage(sp)) {
+      const slots = sp.c64.slots;
+      if (slots.bg === undefined) slots.bg = clampInt(slots.out ?? colorSlots.out, 0, 15);
     }
     const prevW = clampInt(sp.c64.w ?? sp.w, 1, MAX_SIZE);
     const prevH = clampInt(sp.c64.h ?? sp.h, 1, MAX_SIZE);
@@ -328,6 +600,7 @@
     sp.vis.mc = sp.vis.mc !== false;
     sp.vis.out = sp.vis.out !== false;
     sp.vis.cheat = sp.vis.cheat !== false;
+    if (isMcImage(sp)) sp.vis.out = false;
     return sp.vis;
   }
 
@@ -345,13 +618,27 @@
 
   function activePaletteIndex() {
     if (activeSlot === "cheat") return clampInt(cheatColor, 0, 15);
+    const sp = getActiveSprite();
+    if (isMcImage(sp) && activeSlot === "out") {
+      const c64 = ensureC64Layers(sp);
+      return clampInt(c64?.slots?.bg ?? colorSlots.out, 0, 15);
+    }
     return clampInt(colorSlots[activeSlot], 0, 15);
   }
 
   function setActivePaletteIndex(idx) {
     const v = clampInt(idx, 0, 15);
     if (activeSlot === "cheat") cheatColor = v;
-    else colorSlots[activeSlot] = v;
+    else {
+      const sp = getActiveSprite();
+      if (isMcImage(sp) && activeSlot === "out") {
+        colorSlots.out = v;
+        const c64 = ensureC64Layers(sp);
+        if (c64 && c64.slots) c64.slots.bg = v;
+        return;
+      }
+      colorSlots[activeSlot] = v;
+    }
   }
 
   function slotToMcCode(slot) {
@@ -365,6 +652,8 @@
     if (layer === "png" || layer === "cheat") return activePaletteIndex();
     if (layer === "out") return 1;
     // mc
+    const sp = getActiveSprite();
+    if (isMcImage(sp) && activeSlot === "out") return 0; // BG in MC-image mode
     return slotToMcCode(activeSlot);
   }
 
@@ -385,7 +674,8 @@
     colorSlots.fg = clampInt(c64.slots.fg, 0, 15);
     colorSlots.mc1 = clampInt(c64.slots.mc1, 0, 15);
     colorSlots.mc2 = clampInt(c64.slots.mc2, 0, 15);
-    colorSlots.out = clampInt(c64.slots.out, 0, 15);
+    if (isMcImage(sp)) colorSlots.out = clampInt(c64.slots.bg ?? c64.slots.out, 0, 15);
+    else colorSlots.out = clampInt(c64.slots.out, 0, 15);
     syncSlotUi();
     syncPaletteSelection();
   }
@@ -395,10 +685,16 @@
     if (!sp) return;
     const c64 = ensureC64Layers(sp);
     if (!c64) return;
-    c64.slots.fg = clampInt(colorSlots.fg, 0, 15);
-    c64.slots.mc1 = clampInt(colorSlots.mc1, 0, 15);
-    c64.slots.mc2 = clampInt(colorSlots.mc2, 0, 15);
-    c64.slots.out = clampInt(colorSlots.out, 0, 15);
+    if (isMcImage(sp)) {
+      // In MC-image: keep brush color in slots.fg, BG in slots.bg.
+      c64.slots.fg = clampInt(colorSlots.fg, 0, 15);
+      c64.slots.bg = clampInt(colorSlots.out, 0, 15);
+    } else {
+      c64.slots.fg = clampInt(colorSlots.fg, 0, 15);
+      c64.slots.mc1 = clampInt(colorSlots.mc1, 0, 15);
+      c64.slots.mc2 = clampInt(colorSlots.mc2, 0, 15);
+      c64.slots.out = clampInt(colorSlots.out, 0, 15);
+    }
   }
 
   function compositeSpritePixels(sp) {
@@ -410,6 +706,19 @@
     const out = new Uint8Array(len).fill(TRANSPARENT);
     const slots = c64?.slots || colorSlots;
     const vis = ensureSpriteVis(sp);
+    const imgMode = isMcImage(sp);
+    const bgIdx = imgMode ? clampInt(slots.bg ?? slots.out, 0, 15) : 0;
+    let cw = 1;
+    let cellA = null;
+    let cellB = null;
+    let cellC = null;
+    if (imgMode) {
+      const c = ensureMcImageCells(sp);
+      cw = (c?.cellW | 0) || Math.max(1, (w / 8) | 0);
+      cellA = c.cellA;
+      cellB = c.cellB;
+      cellC = c.cellC;
+    }
     for (let i = 0; i < len; i++) {
       // Cheat overlay.
       if (vis.cheat) {
@@ -420,7 +729,7 @@
         }
       }
       // Outline (hires mask).
-      if (vis.out && c64.out[i]) {
+      if (!imgMode && vis.out && c64.out[i]) {
         out[i] = clampInt(slots.out, 0, 15);
         continue;
       }
@@ -429,10 +738,20 @@
         out[i] = TRANSPARENT;
       } else {
         const mc = c64.mc[i] | 0;
-        if (mc === 1) out[i] = clampInt(slots.mc1, 0, 15);
-        else if (mc === 2) out[i] = clampInt(slots.mc2, 0, 15);
-        else if (mc === 3) out[i] = clampInt(slots.fg, 0, 15);
-        else out[i] = TRANSPARENT;
+        if (imgMode) {
+          const x = i % w;
+          const y = (i / w) | 0;
+          const ci = ((y / 8) | 0) * cw + ((x / 8) | 0);
+          if (mc === 1) out[i] = clampInt(cellA[ci] | 0, 0, 15);
+          else if (mc === 2) out[i] = clampInt(cellB[ci] | 0, 0, 15);
+          else if (mc === 3) out[i] = clampInt(cellC[ci] | 0, 0, 15);
+          else out[i] = bgIdx;
+        } else {
+          if (mc === 1) out[i] = clampInt(slots.mc1, 0, 15);
+          else if (mc === 2) out[i] = clampInt(slots.mc2, 0, 15);
+          else if (mc === 3) out[i] = clampInt(slots.fg, 0, 15);
+          else out[i] = TRANSPARENT;
+        }
       }
     }
     return out;
@@ -447,9 +766,22 @@
       if (ch !== TRANSPARENT) return ch;
     }
     const vis = ensureSpriteVis(sp);
-    if (vis.out && c64.out[idx]) return clampInt(slots.out, 0, 15);
+    const imgMode = isMcImage(sp);
+    if (!imgMode && vis.out && c64.out[idx]) return clampInt(slots.out, 0, 15);
     if (!vis.mc) return TRANSPARENT;
     const mc = c64.mc[idx] | 0;
+    if (imgMode) {
+      const c = ensureMcImageCells(sp);
+      const w = sp.w;
+      const x = idx % w;
+      const y = (idx / w) | 0;
+      const cw = (c?.cellW | 0) || Math.max(1, (w / 8) | 0);
+      const ci = ((y / 8) | 0) * cw + ((x / 8) | 0);
+      if (mc === 1) return clampInt(c.cellA[ci] | 0, 0, 15);
+      if (mc === 2) return clampInt(c.cellB[ci] | 0, 0, 15);
+      if (mc === 3) return clampInt(c.cellC[ci] | 0, 0, 15);
+      return clampInt(slots.bg ?? slots.out, 0, 15);
+    }
     if (mc === 1) return clampInt(slots.mc1, 0, 15);
     if (mc === 2) return clampInt(slots.mc2, 0, 15);
     if (mc === 3) return clampInt(slots.fg, 0, 15);
@@ -474,6 +806,7 @@
   let confirmOpen = false;
   let confirmPrevFocus = null;
   let confirmResolve = null;
+  let confirmIsAlert = false;
   let projectName = (projectNameEl.value || "").trim();
   let lang = "pl"; // pl|en
   let keysOpen = false;
@@ -502,6 +835,7 @@
       px_h: "Wysokość (px)",
       preview_bg: "Tło podglądu",
       grid: "Siatka",
+      grid_8: "Siatka 8×8 (MC)",
       local_storage: "Local storage",
       io_title: "Import / Export",
       io_import: "Import",
@@ -605,6 +939,7 @@
       px_h: "Height (px)",
       preview_bg: "Preview background",
       grid: "Grid",
+      grid_8: "8×8 grid (MC)",
       local_storage: "Local storage",
       io_title: "Import / Export",
       io_import: "Import",
@@ -698,7 +1033,7 @@
   setActiveSlot("fg");
   setTool("pen");
   syncResUi();
-  setInitialGrid();
+  await setInitialGrid();
   wireEvents();
   wirePersistenceGuards();
   if (!loadState()) {
@@ -765,61 +1100,61 @@
   }
 
   function wireEvents() {
-    spritesXEl.addEventListener("change", () => {
+    spritesXEl.addEventListener("change", async () => {
       const prev = spritesX;
       spritesX = clampInt(spritesXEl.value, 1, 8);
       spritesXEl.value = String(spritesX);
       if (!customRes) {
-        const ok = setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: true });
+        const ok = await setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: true });
         if (!ok) {
           spritesX = prev;
           spritesXEl.value = String(prev);
         }
       }
     });
-    spritesYEl.addEventListener("change", () => {
+    spritesYEl.addEventListener("change", async () => {
       const prev = spritesY;
       spritesY = clampInt(spritesYEl.value, 1, 8);
       spritesYEl.value = String(spritesY);
       if (!customRes) {
-        const ok = setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: true });
+        const ok = await setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: true });
         if (!ok) {
           spritesY = prev;
           spritesYEl.value = String(prev);
         }
       }
     });
-    customWEl.addEventListener("change", () => {
+    customWEl.addEventListener("change", async () => {
       const prev = customW;
       customW = clampInt(customWEl.value, 1, MAX_SIZE);
       customWEl.value = String(customW);
       if (customRes) {
-        const ok = setGridSize(customW, customH, { keep: true });
+        const ok = await setGridSize(customW, customH, { keep: true });
         if (!ok) {
           customW = prev;
           customWEl.value = String(prev);
         }
       }
     });
-    customHEl.addEventListener("change", () => {
+    customHEl.addEventListener("change", async () => {
       const prev = customH;
       customH = clampInt(customHEl.value, 1, MAX_SIZE);
       customHEl.value = String(customH);
       if (customRes) {
-        const ok = setGridSize(customW, customH, { keep: true });
+        const ok = await setGridSize(customW, customH, { keep: true });
         if (!ok) {
           customH = prev;
           customHEl.value = String(prev);
         }
       }
     });
-    customResEl.addEventListener("change", () => {
+    customResEl.addEventListener("change", async () => {
       const prev = customRes;
       customRes = !!customResEl.checked;
       syncResUi();
-      const ok = customRes
+      const ok = await (customRes
         ? setGridSize(customW, customH, { keep: true })
-        : setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: true });
+        : setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: true }));
       if (!ok) {
         customRes = prev;
         customResEl.checked = prev;
@@ -849,6 +1184,11 @@
     });
     showGridEl.addEventListener("change", () => {
       showGrid = !!showGridEl.checked;
+      scheduleSave();
+      render();
+    });
+    grid8El.addEventListener("change", () => {
+      grid8 = !!grid8El.checked;
       scheduleSave();
       render();
     });
@@ -970,7 +1310,7 @@
         if (sp) {
           const c64 = ensureC64Layers(sp);
           c64.mc.fill(0);
-          c64.out.fill(0);
+          if (!isMcImage(sp)) c64.out.fill(0);
           c64.cheat.fill(TRANSPARENT);
           sp.pixels = c64.cheat;
           // Keep editing the current layer buffer reference.
@@ -1024,6 +1364,7 @@
     });
 
     btnAddSprite.addEventListener("click", () => addSprite());
+    btnAddMcImage.addEventListener("click", () => addMcImage());
 
     spriteInspectorNameEl.addEventListener("input", () => {
       const sp = getActiveSprite();
@@ -1086,15 +1427,16 @@
         render();
         e.preventDefault();
         return;
-      }
-        if (e.shiftKey) {
-          const dir = e.deltaY > 0 ? 1 : -1;
-          const order = ["fg", "mc1", "mc2", "out", "cheat"];
-          const idx = order.indexOf(activeSlot);
-          selectSlot(order[wrapIndex(idx + dir, order.length)]);
-          e.preventDefault();
-          return;
         }
+          if (e.shiftKey) {
+            const dir = e.deltaY > 0 ? 1 : -1;
+            const sp = getActiveSprite();
+            const order = sp && isMcImage(sp) ? ["out", "fg", "cheat"] : ["fg", "mc1", "mc2", "out", "cheat"];
+            const idx = Math.max(0, order.indexOf(activeSlot));
+            selectSlot(order[wrapIndex(idx + dir, order.length)]);
+            e.preventDefault();
+            return;
+          }
 
         const dir = e.deltaY > 0 ? -1 : 1;
         zoom = clampInt(zoom + dir, 4, 64);
@@ -1585,6 +1927,30 @@
     confirmMsg.textContent = message;
     btnConfirmOk.textContent = okText;
     btnConfirmCancel.textContent = cancelText;
+    btnConfirmCancel.hidden = false;
+    confirmIsAlert = false;
+
+    confirmPrevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    confirmModal.hidden = false;
+    confirmOpen = true;
+
+    return new Promise((resolve) => {
+      confirmResolve = resolve;
+      btnConfirmOk.focus();
+    });
+  }
+
+  function showAlert(message, opts = {}) {
+    const title = opts.title ?? t("confirm");
+    const okText = opts.okText ?? t("ok");
+    if (helpOpen) closeHelp();
+    if (keysOpen) closeHotkeys();
+
+    confirmTitle.textContent = title;
+    confirmMsg.textContent = message;
+    btnConfirmOk.textContent = okText;
+    btnConfirmCancel.hidden = true;
+    confirmIsAlert = true;
 
     confirmPrevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     confirmModal.hidden = false;
@@ -1602,21 +1968,33 @@
     confirmOpen = false;
     const resolve = confirmResolve;
     confirmResolve = null;
-    if (typeof resolve === "function") resolve(!!result);
+    if (typeof resolve === "function") resolve(confirmIsAlert ? true : !!result);
+    confirmIsAlert = false;
+    btnConfirmCancel.hidden = false;
 
     const f = confirmPrevFocus;
     confirmPrevFocus = null;
     if (f && document.contains(f)) f.focus();
   }
 
-  function setInitialGrid() {
-    if (customRes) setGridSize(customW, customH, { keep: false, resetHistory: true });
-    else setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: false, resetHistory: true });
+  async function setInitialGrid() {
+    if (customRes) await setGridSize(customW, customH, { keep: false, resetHistory: true });
+    else await setGridSize(SPRITE_W * spritesX, SPRITE_H * spritesY, { keep: false, resetHistory: true });
   }
 
   function syncResUi() {
-    spriteControlsEl.hidden = customRes;
-    customControlsEl.hidden = !customRes;
+    const sp = getActiveSprite();
+    const imgMode = isMcImage(sp);
+    const forcedCustom = imgMode ? true : customRes;
+    spriteControlsEl.hidden = forcedCustom || imgMode;
+    customControlsEl.hidden = !forcedCustom;
+    customResEl.disabled = imgMode;
+    if (imgMode) {
+      customResEl.checked = true;
+      customRes = true;
+    }
+    spritesXEl.disabled = imgMode;
+    spritesYEl.disabled = imgMode;
   }
 
   function buildPalette() {
@@ -1669,9 +2047,10 @@
 
   function setActiveSlot(slot) {
     const layer = getEditLayer();
+    const sp = getActiveSprite();
     let next = slot;
     if (layer !== "cheat" && next === "cheat") next = "fg";
-    if (layer === "mc" && next === "out") next = "fg";
+    if (layer === "mc" && next === "out" && !isMcImage(sp)) next = "fg";
     if (layer === "out") next = "out";
     if (layer === "cheat") next = "cheat";
     activeSlot = next;
@@ -1686,7 +2065,9 @@
 
   function selectSlot(slot) {
     // Selecting a slot implies selecting the matching editable layer.
-    if (slot === "out") setC64Layer("out", { resetHistory: false });
+    const sp = getActiveSprite();
+    if (sp && isMcImage(sp) && (slot === "mc1" || slot === "mc2")) slot = "fg";
+    if (slot === "out" && !isMcImage(sp)) setC64Layer("out", { resetHistory: false });
     else if (slot === "cheat") setC64Layer("cheat", { resetHistory: false });
     else setC64Layer("mc", { resetHistory: false });
     setActiveSlot(slot);
@@ -1740,6 +2121,8 @@
     btnLayerCheat.hidden = false;
     btnLayerCheat.disabled = false;
 
+    const sp = getActiveSprite();
+    const imgMode = isMcImage(sp);
     const layer = getEditLayer();
     btnLayerMC.setAttribute("aria-pressed", layer === "mc" ? "true" : "false");
     btnLayerOUT.setAttribute("aria-pressed", layer === "out" ? "true" : "false");
@@ -1751,6 +2134,35 @@
     // Cheat color slot only when cheat mode is available.
     slotCheatBtn.hidden = false;
     slotCheatBtn.disabled = false;
+
+    // MC-image has no OUT layer: repurpose slot OUT as BG and hide OUT layer button.
+    btnLayerOUT.hidden = imgMode;
+    btnLayerOUT.disabled = imgMode;
+    const outLbl = slotOutBtn.querySelector(".slotLbl");
+    if (outLbl) outLbl.textContent = imgMode ? "BG" : "OUT";
+
+    // MC-image uses BG/FG/CHEAT (no MC1/MC2 UI).
+    slotMc1Btn.hidden = imgMode;
+    slotMc2Btn.hidden = imgMode;
+    slotMc1Btn.disabled = imgMode;
+    slotMc2Btn.disabled = imgMode;
+
+    if (imgMode) {
+      slotOutBtn.style.order = "0";
+      slotFgBtn.style.order = "1";
+      slotCheatBtn.style.order = "2";
+    } else {
+      slotOutBtn.style.order = "";
+      slotFgBtn.style.order = "";
+      slotCheatBtn.style.order = "";
+    }
+
+    // Grid 8x8 only makes sense for MC-image.
+    grid8El.disabled = !imgMode;
+    if (!imgMode) {
+      grid8El.checked = false;
+      grid8 = false;
+    }
   }
 
   function setC64Layer(layer, opts = {}) {
@@ -1758,6 +2170,7 @@
     if (!sp) return;
     const c64 = ensureC64Layers(sp);
     let next = layer === "cheat" ? "cheat" : layer === "out" ? "out" : "mc";
+    if (isMcImage(sp) && next === "out") next = "mc";
 
     if (next === "cheat") {
       c64.lastLayer = "cheat";
@@ -1770,7 +2183,7 @@
       widePixel = true;
       widePixelEl.checked = true;
       pixels = c64.mc;
-      if (activeSlot === "out") setActiveSlot("fg");
+      if (!isMcImage(sp) && activeSlot === "out") setActiveSlot("fg");
       if (activeSlot === "cheat") setActiveSlot("fg");
     } else if (next === "out") {
       widePixel = false;
@@ -1837,7 +2250,10 @@
   function undo() {
     if (undoStack.length === 0) return;
     const snap = undoStack.pop();
+    const sp = getActiveSprite();
     if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "all") redoStack.push(captureAllLayersSnapshot());
+    else if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "mcimg") redoStack.push(captureMcImageSnapshot());
+    else if (sp && isMcImage(sp) && getEditLayer() === "mc") redoStack.push(captureMcImageSnapshot());
     else redoStack.push(pixels.slice());
     applyUndoSnapshot(snap);
     updateHistoryButtons();
@@ -1847,7 +2263,10 @@
   function redo() {
     if (redoStack.length === 0) return;
     const snap = redoStack.pop();
+    const sp = getActiveSprite();
     if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "all") undoStack.push(captureAllLayersSnapshot());
+    else if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "mcimg") undoStack.push(captureMcImageSnapshot());
+    else if (sp && isMcImage(sp) && getEditLayer() === "mc") undoStack.push(captureMcImageSnapshot());
     else undoStack.push(pixels.slice());
     applyUndoSnapshot(snap);
     updateHistoryButtons();
@@ -1865,13 +2284,13 @@
     btnRedo.disabled = redoStack.length === 0;
   }
 
-  function setGridSize(w, h, opts = {}) {
+  async function setGridSize(w, h, opts = {}) {
     const keep = !!opts.keep;
     const reset = opts.resetHistory !== false;
 
     const nextW = clampInt(w, 1, MAX_SIZE);
     const nextH = clampInt(h, 1, MAX_SIZE);
-    if (!canResizeWithoutDataLoss(nextW, nextH)) return false;
+    if (!(await canResizeWithoutDataLoss(nextW, nextH))) return false;
 
     const sp = getActiveSprite();
     const prevW = gridW;
@@ -1911,11 +2330,10 @@
     return true;
   }
 
-  function canResizeWithoutDataLoss(nextW, nextH) {
+  async function canResizeWithoutDataLoss(nextW, nextH) {
     if (nextW >= gridW && nextH >= gridH) return true;
 
     const sp = getActiveSprite();
-    const confirmOnce = () => confirm("Zmniejszenie rozmiaru może uciąć piksele. Kontynuować?");
 
     const wouldCrop = (buf, transparentVal) => {
       if (!buf || !buf.length) return false;
@@ -1929,14 +2347,14 @@
     };
 
     if (!sp) {
-      if (wouldCrop(pixels, TRANSPARENT)) return confirmOnce();
+      if (wouldCrop(pixels, TRANSPARENT)) return await askConfirm("Zmniejszenie rozmiaru może uciąć piksele. Kontynuować?");
       return true;
     }
 
     const c64 = ensureC64Layers(sp);
-    if (wouldCrop(c64.mc, 0)) return confirmOnce();
-    if (wouldCrop(c64.out, 0)) return confirmOnce();
-    if (wouldCrop(c64.cheat, TRANSPARENT)) return confirmOnce();
+    if (wouldCrop(c64.mc, 0)) return await askConfirm("Zmniejszenie rozmiaru może uciąć piksele. Kontynuować?");
+    if (wouldCrop(c64.out, 0)) return await askConfirm("Zmniejszenie rozmiaru może uciąć piksele. Kontynuować?");
+    if (wouldCrop(c64.cheat, TRANSPARENT)) return await askConfirm("Zmniejszenie rozmiaru może uciąć piksele. Kontynuować?");
     return true;
   }
 
@@ -1971,19 +2389,33 @@
       return;
     }
     if (tool === "fill") {
-      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
-      if (fillWouldChange(pointer.x, pointer.y, value)) {
+      const sp = getActiveSprite();
+      if (sp && isMcImage(sp) && getEditLayer() === "mc") {
         ensureUndo();
-        action.changed = floodFill(pointer.x, pointer.y, value) || action.changed;
+        const desired = action.button === 2 ? null : activeSlot === "out" ? null : clampInt(colorSlots.fg, 0, 15);
+        action.changed = mcImageFloodFill(pointer.x, pointer.y, desired) || action.changed;
+      } else {
+        const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
+        if (fillWouldChange(pointer.x, pointer.y, value)) {
+          ensureUndo();
+          action.changed = floodFill(pointer.x, pointer.y, value) || action.changed;
+        }
       }
       return;
     }
 
     if (tool === "pen" || tool === "eraser") {
-      const value = action.button === 2 || tool === "eraser" ? currentEraseValue() : currentPaintValue();
-      if (wouldStampChange(pointer.x, pointer.y, value)) {
+      const sp = getActiveSprite();
+      if (sp && isMcImage(sp) && getEditLayer() === "mc") {
         ensureUndo();
-        action.changed = stamp(pointer.x, pointer.y, value) || action.changed;
+        const desired = action.button === 2 || tool === "eraser" ? null : activeSlot === "out" ? null : clampInt(colorSlots.fg, 0, 15);
+        action.changed = mcImageStamp(pointer.x, pointer.y, desired) || action.changed;
+      } else {
+        const value = action.button === 2 || tool === "eraser" ? currentEraseValue() : currentPaintValue();
+        if (wouldStampChange(pointer.x, pointer.y, value)) {
+          ensureUndo();
+          action.changed = stamp(pointer.x, pointer.y, value) || action.changed;
+        }
       }
       return;
     }
@@ -2003,10 +2435,17 @@
       return;
     }
     if (tool === "pen" || tool === "eraser") {
-      const value = action.button === 2 || tool === "eraser" ? currentEraseValue() : currentPaintValue();
-      if (wouldStampChange(pointer.x, pointer.y, value)) {
+      const sp = getActiveSprite();
+      if (sp && isMcImage(sp) && getEditLayer() === "mc") {
         ensureUndo();
-        action.changed = stamp(pointer.x, pointer.y, value) || action.changed;
+        const desired = action.button === 2 || tool === "eraser" ? null : activeSlot === "out" ? null : clampInt(colorSlots.fg, 0, 15);
+        action.changed = mcImageStamp(pointer.x, pointer.y, desired) || action.changed;
+      } else {
+        const value = action.button === 2 || tool === "eraser" ? currentEraseValue() : currentPaintValue();
+        if (wouldStampChange(pointer.x, pointer.y, value)) {
+          ensureUndo();
+          action.changed = stamp(pointer.x, pointer.y, value) || action.changed;
+        }
       }
       return;
     }
@@ -2023,30 +2462,53 @@
       return;
     }
     if (tool === "line") {
-      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
-      if (lineWouldChange(action.startX, action.startY, pointer.x, pointer.y, value)) {
+      const sp = getActiveSprite();
+      if (sp && isMcImage(sp) && getEditLayer() === "mc") {
         ensureUndo();
-        action.changed = drawLine(action.startX, action.startY, pointer.x, pointer.y, value) || action.changed;
+        const desired = action.button === 2 ? null : activeSlot === "out" ? null : clampInt(colorSlots.fg, 0, 15);
+        action.changed = mcImageDrawLine(action.startX, action.startY, pointer.x, pointer.y, desired) || action.changed;
+      } else {
+        const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
+        if (lineWouldChange(action.startX, action.startY, pointer.x, pointer.y, value)) {
+          ensureUndo();
+          action.changed = drawLine(action.startX, action.startY, pointer.x, pointer.y, value) || action.changed;
+        }
       }
       return;
     }
     if (tool === "rect") {
-      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
-      const willChange = rectWouldChange(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill });
-      if (willChange) {
+      const sp = getActiveSprite();
+      if (sp && isMcImage(sp) && getEditLayer() === "mc") {
         ensureUndo();
+        const desired = action.button === 2 ? null : activeSlot === "out" ? null : clampInt(colorSlots.fg, 0, 15);
         action.changed =
-          drawRect(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill }) || action.changed;
+          mcImageDrawRect(action.startX, action.startY, pointer.x, pointer.y, desired, { fill: shapeFill }) || action.changed;
+      } else {
+        const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
+        const willChange = rectWouldChange(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill });
+        if (willChange) {
+          ensureUndo();
+          action.changed =
+            drawRect(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill }) || action.changed;
+        }
       }
       return;
     }
     if (tool === "circle") {
-      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
-      const willChange = circleWouldChange(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill });
-      if (willChange) {
+      const sp = getActiveSprite();
+      if (sp && isMcImage(sp) && getEditLayer() === "mc") {
         ensureUndo();
+        const desired = action.button === 2 ? null : activeSlot === "out" ? null : clampInt(colorSlots.fg, 0, 15);
         action.changed =
-          drawCircle(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill }) || action.changed;
+          mcImageDrawCircle(action.startX, action.startY, pointer.x, pointer.y, desired, { fill: shapeFill }) || action.changed;
+      } else {
+        const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
+        const willChange = circleWouldChange(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill });
+        if (willChange) {
+          ensureUndo();
+          action.changed =
+            drawCircle(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill }) || action.changed;
+        }
       }
       return;
     }
@@ -2538,7 +3000,7 @@
       const isErase = action.active && action.button === 2;
       ctx.save();
       ctx.globalAlpha = 0.75;
-      ctx.fillStyle = isErase ? "rgba(255,255,255,.35)" : C64[colorSlots[activeSlot]].hex;
+      ctx.fillStyle = isErase ? "rgba(255,255,255,.35)" : C64[activePaletteIndex()].hex;
       for (const [x, y] of action.preview) {
         if (widePixel) {
           const xx = x - (x % 2);
@@ -2563,9 +3025,10 @@
       ctx.restore();
     }
 
-    // Grid overlay.
-    if (showGrid && zoom >= 10) {
-      ctx.strokeStyle = "rgba(255,255,255,.10)";
+    // Grid overlay (keep it visible even at smaller zoom).
+    if (showGrid) {
+      const a = zoom >= 10 ? 0.11 : zoom >= 6 ? 0.14 : 0.18;
+      ctx.save();
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let x = 0; x <= gridW; x++) {
@@ -2578,7 +3041,35 @@
         ctx.moveTo(0, py);
         ctx.lineTo(gridW * zoom, py);
       }
+      // Two-pass stroke for contrast on any background.
+      ctx.strokeStyle = `rgba(0,0,0,${a})`;
       ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${a * 0.85})`;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // MC 8×8 cell grid (thicker). Independent toggle from the fine grid.
+    if (grid8 && sp && isMcImage(sp)) {
+      const a8 = zoom >= 10 ? 0.28 : zoom >= 6 ? 0.24 : 0.20;
+      ctx.save();
+      ctx.lineWidth = zoom >= 6 ? 2 : 1.5;
+      ctx.beginPath();
+      for (let x = 0; x <= gridW; x += 8) {
+        const px = x * zoom + 0.5;
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, gridH * zoom);
+      }
+      for (let y = 0; y <= gridH; y += 8) {
+        const py = y * zoom + 0.5;
+        ctx.moveTo(0, py);
+        ctx.lineTo(gridW * zoom, py);
+      }
+      ctx.strokeStyle = `rgba(0,0,0,${a8})`;
+      ctx.stroke();
+      ctx.strokeStyle = isDarkTheme(theme) ? `rgba(255,45,45,${a8})` : `rgba(255,255,255,${a8})`;
+      ctx.stroke();
+      ctx.restore();
     }
 
     // Sprite boundaries (only in sprite mode).
@@ -2626,7 +3117,16 @@
     const modeLabel = `${widePixel ? "wide (2×)" : "normal"} | ${layerLabel || t("layer_cheat")}`;
     const canvasLabel = customRes ? `${gridW}×${gridH}px` : `${spritesX}×${spritesY} sprite (${gridW}×${gridH})`;
     const toolLabel = toolName(tool);
-    const slotLabel = `${slotName(activeSlot)} (${C64[activePaletteIndex()].name})`;
+    const slotKey = sp && isMcImage(sp) && activeSlot === "out" ? "BG" : slotName(activeSlot);
+    let slotLabel = `${slotKey} (${C64[activePaletteIndex()].name})`;
+    if (sp && isMcImage(sp) && editLayer === "mc" && pointer.over && pointer.x >= 0 && pointer.y >= 0) {
+      const c64 = ensureMcImageCells(sp);
+      const ci = mcCellIndexAt(sp, pointer.x, pointer.y);
+      const a = C64[clampInt(c64.cellA[ci] | 0, 0, 15)].name;
+      const b = C64[clampInt(c64.cellB[ci] | 0, 0, 15)].name;
+      const c = C64[clampInt(c64.cellC[ci] | 0, 0, 15)].name;
+      slotLabel += ` | cell A:${a} B:${b} C:${c}`;
+    }
 
     setStatus("statusCursor", cursor);
     setStatus("statusTool", toolLabel);
@@ -2910,7 +3410,7 @@
     const w = gridW;
     const h = gridH;
     const cheat = new Uint8Array(w * h).fill(TRANSPARENT);
-    const sp = { id, name, w, h, pixels: cheat };
+    const sp = { id, kind: DOC_KIND_SPRITE, name, w, h, pixels: cheat };
     sp.c64 = {
       w,
       h,
@@ -2926,12 +3426,35 @@
     setActiveSprite(id);
   }
 
+  function addMcImage() {
+    const id = makeId("mcimg");
+    const name = `MC ${sprites.length + 1}`;
+    const w = 320;
+    const h = 200;
+    const cheat = new Uint8Array(w * h).fill(TRANSPARENT);
+    const sp = { id, kind: DOC_KIND_MC_IMAGE, name, w, h, pixels: cheat };
+    sp.c64 = {
+      w,
+      h,
+      slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out, bg: colorSlots.out },
+      mc: new Uint8Array(w * h).fill(0),
+      out: new Uint8Array(w * h).fill(0),
+      cheat,
+      lastLayer: "mc",
+      lastNonCheatLayer: "mc",
+    };
+    sp.vis = { mc: true, out: false, cheat: true };
+    sprites.push(sp);
+    scheduleSave();
+    setActiveSprite(id);
+  }
+
   function duplicateSprite(id) {
     const sp = sprites.find((s) => s.id === id);
     if (!sp) return;
     const nextId = makeId("sprite");
     const name = `${sp.name} copy`;
-    const dup = { id: nextId, name, w: sp.w, h: sp.h, pixels: sp.pixels.slice() };
+    const dup = { id: nextId, kind: sp.kind || DOC_KIND_SPRITE, name, w: sp.w, h: sp.h, pixels: sp.pixels.slice() };
     if (sp.c64) {
       const c64 = ensureC64Layers(sp);
       dup.c64 = {
@@ -2973,7 +3496,7 @@
     activeSpriteId = sp.id;
     gridW = sp.w;
     gridH = sp.h;
-    if (gridW % SPRITE_W === 0 && gridH % SPRITE_H === 0) {
+    if (!isMcImage(sp) && gridW % SPRITE_W === 0 && gridH % SPRITE_H === 0) {
       customRes = false;
       customResEl.checked = false;
       spritesX = clampInt(gridW / SPRITE_W, 1, 8);
@@ -3047,6 +3570,7 @@
       const div = document.createElement("div");
       div.className = "libMeta";
       div.textContent = sp.name;
+      if (isMcImage(sp)) div.textContent = `MC: ${sp.name}`;
       row.appendChild(div);
 
       item.appendChild(thumb);
@@ -3063,12 +3587,13 @@
     const len = sp.w * sp.h;
     const out = new Uint8Array(len).fill(TRANSPARENT);
     if (kind === "mc") {
+      const bg = isMcImage(sp) ? clampInt(slots.bg ?? slots.out, 0, 15) : null;
       for (let i = 0; i < len; i++) {
         const v = c64.mc[i] | 0;
         if (v === 1) out[i] = clampInt(slots.mc1, 0, 15);
         else if (v === 2) out[i] = clampInt(slots.mc2, 0, 15);
         else if (v === 3) out[i] = clampInt(slots.fg, 0, 15);
-        else out[i] = TRANSPARENT;
+        else out[i] = bg === null ? TRANSPARENT : bg;
       }
       return out;
     }
@@ -3168,9 +3693,14 @@
       spriteInspectorLayersEl.appendChild(row);
     };
 
-    addLayerRow("mc", "MC", "Sprite 1 (multicolor)", true, sp.vis.mc, editLayer === "mc");
-    addLayerRow("out", "OUT", "Sprite 2 (outline)", true, sp.vis.out, editLayer === "out");
-    addLayerRow("cheat", "CHEAT", "Overlay (hires)", true, sp.vis.cheat, editLayer === "cheat");
+    if (isMcImage(sp)) {
+      addLayerRow("mc", "MC", "Bitmap (multicolor)", true, sp.vis.mc, editLayer === "mc");
+      addLayerRow("cheat", "CHEAT", "Overlay (hires)", true, sp.vis.cheat, editLayer === "cheat");
+    } else {
+      addLayerRow("mc", "MC", "Sprite 1 (multicolor)", true, sp.vis.mc, editLayer === "mc");
+      addLayerRow("out", "OUT", "Sprite 2 (outline)", true, sp.vis.out, editLayer === "out");
+      addLayerRow("cheat", "CHEAT", "Overlay (hires)", true, sp.vis.cheat, editLayer === "cheat");
+    }
   }
 
   function applyCollapseUi() {
@@ -3227,6 +3757,7 @@
         zoom,
         bgColor,
         showGrid,
+        grid8,
         widePixel,
         shapeFill,
         customRes,
@@ -3243,6 +3774,7 @@
       },
       sprites: sprites.map((s) => ({
         id: s.id,
+        kind: s.kind || DOC_KIND_SPRITE,
         name: s.name,
         w: s.w,
         h: s.h,
@@ -3254,6 +3786,11 @@
               mcRle: encodeRle(s.c64.mc),
               outRle: encodeRle(s.c64.out),
               cheatRle: encodeRle(s.c64.cheat),
+              cellW: s.c64.cellW,
+              cellH: s.c64.cellH,
+              cellARle: s.c64.cellA ? encodeRle(s.c64.cellA) : null,
+              cellBRle: s.c64.cellB ? encodeRle(s.c64.cellB) : null,
+              cellCRle: s.c64.cellC ? encodeRle(s.c64.cellC) : null,
               lastLayer: s.c64.lastLayer,
               lastNonCheatLayer: s.c64.lastNonCheatLayer,
             }
@@ -3291,6 +3828,7 @@
     zoom = clampInt(s.zoom, 4, 64);
     bgColor = typeof s.bgColor === "string" ? s.bgColor : bgColor;
     showGrid = s.showGrid !== undefined ? !!s.showGrid : showGrid;
+    grid8 = s.grid8 !== undefined ? !!s.grid8 : grid8;
     widePixel = s.widePixel !== undefined ? !!s.widePixel : widePixel;
     shapeFill = s.shapeFill !== undefined ? !!s.shapeFill : shapeFill;
     customRes = s.customRes !== undefined ? !!s.customRes : customRes;
@@ -3308,6 +3846,7 @@
     zoomEl.value = String(zoom);
     bgColorEl.value = bgColor;
     showGridEl.checked = showGrid;
+    grid8El.checked = grid8;
     widePixelEl.checked = widePixel;
     shapeFillEl.checked = shapeFill;
     customResEl.checked = customRes;
@@ -3329,7 +3868,8 @@
         const w = clampInt(sp.w, 1, MAX_SIZE);
         const h = clampInt(sp.h, 1, MAX_SIZE);
         const pix = decodeRle(sp.rle, w * h);
-        const sprite = { id: sp.id, name: sp.name || "Sprite", w, h, pixels: pix };
+        const kind = sp.kind === DOC_KIND_MC_IMAGE ? DOC_KIND_MC_IMAGE : DOC_KIND_SPRITE;
+        const sprite = { id: sp.id, kind, name: sp.name || "Sprite", w, h, pixels: pix };
         if (sp.vis && typeof sp.vis === "object") sprite.vis = { mc: sp.vis.mc !== false, out: sp.vis.out !== false, cheat: sp.vis.cheat !== false };
         if (sp.c64 && typeof sp.c64 === "object") {
           const slots = sp.c64.slots || {};
@@ -3347,26 +3887,49 @@
               mc1: clampInt(slots.mc1 ?? colorSlots.mc1, 0, 15),
               mc2: clampInt(slots.mc2 ?? colorSlots.mc2, 0, 15),
               out: clampInt(slots.out ?? colorSlots.out, 0, 15),
+              ...(kind === DOC_KIND_MC_IMAGE ? { bg: clampInt(slots.bg ?? slots.out ?? colorSlots.out, 0, 15) } : {}),
             },
             mc,
             out,
             cheat,
+            cellW: kind === DOC_KIND_MC_IMAGE ? clampInt(sp.c64.cellW ?? ((w / 8) | 0), 1, 4096) : undefined,
+            cellH: kind === DOC_KIND_MC_IMAGE ? clampInt(sp.c64.cellH ?? ((h / 8) | 0), 1, 4096) : undefined,
+            cellA: kind === DOC_KIND_MC_IMAGE ? decodeRle(sp.c64.cellARle, ((w / 8) | 0) * ((h / 8) | 0), clampInt(colorSlots.mc1, 0, 15)) : undefined,
+            cellB: kind === DOC_KIND_MC_IMAGE ? decodeRle(sp.c64.cellBRle, ((w / 8) | 0) * ((h / 8) | 0), clampInt(colorSlots.mc2, 0, 15)) : undefined,
+            cellC: kind === DOC_KIND_MC_IMAGE ? decodeRle(sp.c64.cellCRle, ((w / 8) | 0) * ((h / 8) | 0), clampInt(colorSlots.fg, 0, 15)) : undefined,
             lastLayer: sp.c64.lastLayer || "mc",
             lastNonCheatLayer: sp.c64.lastNonCheatLayer || "mc",
           };
+          if (kind === DOC_KIND_MC_IMAGE) ensureMcImageCells(sprite);
           sprite.pixels = sprite.c64.cheat;
         } else {
           // Legacy project: treat old PNG pixels as CHEAT layer by default.
           sprite.c64 = {
             w,
             h,
-            slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out },
+            slots: {
+              fg: colorSlots.fg,
+              mc1: colorSlots.mc1,
+              mc2: colorSlots.mc2,
+              out: colorSlots.out,
+              ...(kind === DOC_KIND_MC_IMAGE ? { bg: colorSlots.out } : {}),
+            },
             mc: new Uint8Array(w * h).fill(0),
             out: new Uint8Array(w * h).fill(0),
             cheat: sprite.pixels,
+            ...(kind === DOC_KIND_MC_IMAGE
+              ? {
+                  cellW: (w / 8) | 0,
+                  cellH: (h / 8) | 0,
+                  cellA: new Uint8Array(((w / 8) | 0) * ((h / 8) | 0)).fill(clampInt(colorSlots.mc1, 0, 15)),
+                  cellB: new Uint8Array(((w / 8) | 0) * ((h / 8) | 0)).fill(clampInt(colorSlots.mc2, 0, 15)),
+                  cellC: new Uint8Array(((w / 8) | 0) * ((h / 8) | 0)).fill(clampInt(colorSlots.fg, 0, 15)),
+                }
+              : {}),
             lastLayer: "cheat",
             lastNonCheatLayer: "mc",
           };
+          if (kind === DOC_KIND_MC_IMAGE) ensureMcImageCells(sprite);
         }
         sprites.push(sprite);
       }
@@ -3660,7 +4223,7 @@
       for (const tile of tiles) blocks.push({ sp, c64, slots, ...tile });
     }
     if (blocks.length === 0) {
-      alert("Brak sprite’ów 24×21 (lub wielokrotności) do eksportu SpritePad (.spd).");
+      await showAlert("Brak sprite’ów 24×21 (lub wielokrotności) do eksportu SpritePad (.spd).", { title: "SpritePad" });
       return;
     }
 
@@ -3726,16 +4289,16 @@
     try {
       bytes = new Uint8Array(await file.arrayBuffer());
     } catch {
-      alert("Nie udało się wczytać pliku .spd.");
+      await showAlert("Nie udało się wczytać pliku .spd.", { title: "SpritePad" });
       return;
     }
     if (bytes.length < SPD_HEADER_BYTES) {
-      alert("Nieprawidłowy plik .spd.");
+      await showAlert("Nieprawidłowy plik .spd.", { title: "SpritePad" });
       return;
     }
     const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2]);
     if (sig !== "SPD") {
-      alert("To nie wygląda na plik SpritePad (.spd).");
+      await showAlert("To nie wygląda na plik SpritePad (.spd).", { title: "SpritePad" });
       return;
     }
     const version = bytes[3] | 0;
@@ -3745,7 +4308,7 @@
     const mc2 = clampInt(bytes[8] | 0, 0, 15);
     const needed = SPD_HEADER_BYTES + numSprites * SPD_SPRITE_BYTES + numAnims * 4;
     if (bytes.length < needed) {
-      alert("Plik .spd jest ucięty lub nieprawidłowy.");
+      await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
       return;
     }
     if (version !== 2 && version !== 1 && version !== 3) {
@@ -3823,10 +4386,10 @@
       const text = await file.text();
       const state = JSON.parse(text);
       const ok = hydrateFromStateObject(state);
-      if (!ok) alert("Nieprawidłowy plik projektu.");
+      if (!ok) await showAlert("Nieprawidłowy plik projektu.", { title: "Projekt" });
       else saveState();
     } catch {
-      alert("Nie udało się zaimportować projektu.");
+      await showAlert("Nie udało się zaimportować projektu.", { title: "Projekt" });
     }
   }
 

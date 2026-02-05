@@ -6,6 +6,7 @@
   --muted:#a8b0d0;
   --border:#27304a;
   --accent:#6aa1ff;
+  --accent-glow: rgba(106,161,255,.35);
   --danger:#ff5a6a;
   --topbar-h:58px;
   --statusbar-h:74px;
@@ -45,7 +46,23 @@ html[data-theme^="dark"]{
   --muted:#d2a5a5;
   --border:#2a0f14;
   --accent:#ff2d2d;
+  --accent-glow: rgba(255,45,45,.35);
   --danger:#ff2d2d;
+}
+
+@keyframes accentPulse{
+  0%,100%{
+    box-shadow: 0 0 0 2px var(--accent), 0 0 0 1px rgba(0,0,0,.25) inset, 0 0 10px var(--accent-glow);
+  }
+  50%{
+    box-shadow: 0 0 0 3px var(--accent), 0 0 0 1px rgba(0,0,0,.25) inset, 0 0 16px var(--accent-glow);
+  }
+}
+@media (prefers-reduced-motion: reduce){
+  .slotBtn[aria-pressed="true"],
+  .swatch[aria-checked="true"]{
+    animation: none !important;
+  }
 }
 
 html[data-theme^="dark"] .panel{
@@ -92,6 +109,18 @@ html[data-theme^="dark"] *::-webkit-scrollbar-thumb:hover{background: rgba(255,4
   padding:14px 16px;
   border-bottom:1px solid var(--border);
   background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0));
+}
+.topbar__center{
+  position:absolute;
+  left:50%;
+  transform: translateX(-50%);
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+@media (max-width: 980px){
+  .topbar__center{position:static; transform:none}
+  .topbar{flex-wrap:wrap}
 }
 .brand__title{
   font-weight:700;
@@ -226,8 +255,9 @@ html[data-theme^="dark"] .topbarInput:focus-visible{
   min-width:52px;
 }
 .slotBtn[aria-pressed="true"]{
-  border-color: rgba(106,161,255,.55);
-  box-shadow: 0 0 0 1px rgba(106,161,255,.25) inset;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 1px rgba(0,0,0,.25) inset, 0 0 10px var(--accent-glow);
+  animation: accentPulse 1.35s ease-in-out infinite;
 }
 .slotLbl{font-size:12px; font-weight:900; color:inherit; letter-spacing:.08em; text-shadow: 0 1px 0 rgba(0,0,0,.35)}
 .slotSwatch{
@@ -246,7 +276,8 @@ html[data-theme^="dark"] .topbarInput:focus-visible{
   outline:none;
 }
 .swatch[aria-checked="true"]{
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 1px rgba(0,0,0,.2) inset;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 1px rgba(0,0,0,.25) inset, 0 0 10px var(--accent-glow);
+  animation: accentPulse 1.35s ease-in-out infinite;
   border-color: rgba(255,255,255,.28);
 }
 

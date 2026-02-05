@@ -17,6 +17,10 @@
         </div>
         <div class="brand__subtitle" data-i18n="brand_subtitle">Edytor C64 Sprite 'dla debili'.</div>
       </div>
+      <div class="topbar__center" aria-label="History">
+        <button id="btnUndo" class="btn" type="button" title="Undo (Ctrl+Z)" disabled>Undo</button>
+        <button id="btnRedo" class="btn" type="button" title="Redo (Ctrl+Y / Ctrl+Shift+Z)" disabled>Redo</button>
+      </div>
       <div class="topbar__actions">
         <button id="btnTheme" class="btn" type="button" aria-pressed="false" title="Theme (Light/Dark)">
           <span class="themeDot" aria-hidden="true"></span>
@@ -168,10 +172,6 @@
             </button>
           </div>
           <div class="row">
-            <button id="btnUndo" class="btn" type="button" title="Undo (Ctrl+Z)" disabled>Undo</button>
-            <button id="btnRedo" class="btn" type="button" title="Redo (Ctrl+Y / Ctrl+Shift+Z)" disabled>Redo</button>
-          </div>
-          <div class="row">
             <label class="toggle toggleBtn">
               <input id="shapeFill" type="checkbox" />
               <span class="toggleBox" aria-hidden="true"></span>
@@ -228,6 +228,11 @@
             <input id="showGrid" type="checkbox" checked />
             <span class="toggleBox" aria-hidden="true"></span>
             <span class="toggleText" data-i18n="grid">Siatka</span>
+          </label>
+          <label class="toggle toggleBtn">
+            <input id="grid8" type="checkbox" />
+            <span class="toggleBox" aria-hidden="true"></span>
+            <span class="toggleText" data-i18n="grid_8">Siatka 8×8 (MC)</span>
           </label>
         </section>
 
@@ -292,6 +297,12 @@
               <div class="row">
                 <button id="btnAddSprite" class="iconBtn" type="button" title="Add sprite" aria-label="Add sprite">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v14h-2V5zm-6 6h14v2H5v-2z"/></svg>
+                </button>
+                <button id="btnAddMcImage" class="iconBtn" type="button" title="Add MC image (320×200)" aria-label="Add MC image (320×200)">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zm-2 0H5V5h14v14z"/>
+                    <path fill="currentColor" d="M7 17l4-5 3 3 2-2 3 4H7z"/>
+                  </svg>
                 </button>
               </div>
             <div class="hint" data-i18n="sprites_hint">Klik miniatury przełącza aktywną edycję.</div>
