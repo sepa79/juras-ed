@@ -102,15 +102,15 @@
               </svg>
               <span class="toolText">Line</span>
             </button>
-            <button id="toolFill" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Fill" title="Fill (F)">
-              <span class="srOnly">Fill</span>
-              <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
-                <!-- bucket -->
-                <path fill="currentColor" d="M19.35 10.04l-5.39-5.39a1 1 0 0 0-1.41 0l-7.9 7.9a1 1 0 0 0-.29.7V18a2 2 0 0 0 2 2h4.75a1 1 0 0 0 .7-.29l7.54-7.54a1 1 0 0 0 0-1.41zM10.7 18H6.36v-3.93l6.9-6.9 3.93 3.93L10.7 18z"/>
-                <path fill="currentColor" d="M7 21h14v-2H7v2z"/>
-              </svg>
-              <span class="toolText">Fill</span>
-            </button>
+              <button id="toolFill" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Fill" title="Fill (F)">
+                <span class="srOnly">Fill</span>
+                <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
+                  <!-- bucket (paint fill) -->
+                  <path fill="currentColor" d="M19.35 11.04l-6.39-6.39a1 1 0 0 0-1.41 0l-7.9 7.9a1 1 0 0 0-.29.7V19a2 2 0 0 0 2 2h6.59a1 1 0 0 0 .7-.29l6.7-6.7a1 1 0 0 0 0-1.41zM10.7 19H6v-5.3l6.5-6.5 5.3 5.3L10.7 19z"/>
+                  <path fill="currentColor" d="M19 14s-2 2.2-2 3.5a2 2 0 0 0 4 0c0-1.3-2-3.5-2-3.5z"/>
+                </svg>
+                <span class="toolText">Fill</span>
+              </button>
             <button id="toolRect" class="btn toolBtn" type="button" aria-pressed="false" aria-label="Rectangle" title="Rectangle (R)">
               <span class="srOnly">Prostokąt</span>
               <svg class="toolIcon" viewBox="0 0 24 24" aria-hidden="true">
@@ -274,7 +274,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v14h-2V5zm-6 6h14v2H5v-2z"/></svg>
               </button>
               <button id="btnImportSpritePng" class="iconBtn" type="button" title="Import PNG as sprite" aria-label="Import PNG as sprite">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2v11l4-4 1.41 1.41L12 16.83 6.59 10.41 8 9l4 4V2h0z"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 18l5-5h-3V3h-4v10H7l5 5z"/></svg>
               </button>
               <button id="btnExportSpritePng" class="iconBtn" type="button" title="Export active sprite PNG" aria-label="Export active sprite PNG">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
@@ -293,10 +293,10 @@
           </div>
           <div id="swatchesBody">
               <div class="row">
-                <button id="btnImportSwatchPng" class="iconBtn" type="button" title="Import PNG as swatch" aria-label="Import PNG as swatch">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2v11l4-4 1.41 1.41L12 16.83 6.59 10.41 8 9l4 4V2h0z"/></svg>
-                </button>
-              </div>
+                 <button id="btnImportSwatchPng" class="iconBtn" type="button" title="Import PNG as swatch" aria-label="Import PNG as swatch">
+                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 18l5-5h-3V3h-4v10H7l5 5z"/></svg>
+                 </button>
+               </div>
             <div class="hint" data-i18n="swatches_hint">Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).</div>
             <div id="libraryList" class="library library--swatches"></div>
           </div>
