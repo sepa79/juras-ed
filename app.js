@@ -8,6 +8,7 @@
   const MAX_HISTORY = 50;
   const LS_KEY = "jurased_state_v1";
   let saveTimer = null;
+  let isResetting = false;
 
   // Pepto C64 palette (commonly used).
   const C64 = [
@@ -903,7 +904,7 @@
       default_collection: "Moja kolekcja",
       project_placeholder: "Nazwa kolekcji…",
       swatches_empty: "Brak swatchy. Zaznacz fragment (Select/Q) i Ctrl+C.",
-      clear_ls_confirm: "Wyczyścić zapis localStorage i zresetować edytor?",
+      clear_ls_confirm: "Wyczyścić zapis localStorage i zresetować edytor? Utracisz wszystkie dane projektu.",
       clear_ls_title: "Wyczyść localStorage",
       clear_canvas_title: "Wyczyść",
       clear_canvas_confirm: "Wyczyścić całe płótno?",
@@ -1008,7 +1009,7 @@
       default_collection: "My collection",
       project_placeholder: "Collection name…",
       swatches_empty: "No swatches. Select a region (Select/Q) and press Ctrl+C.",
-      clear_ls_confirm: "Clear localStorage save and reset the editor?",
+      clear_ls_confirm: "Clear localStorage save and reset the editor? You will lose all project data.",
       clear_ls_title: "Clear localStorage",
       clear_canvas_title: "Clear",
       clear_canvas_confirm: "Clear the entire canvas?",
@@ -1270,13 +1271,23 @@
         });
         if (!ok) return;
       }
+      hardResetToDefaults();
+    });
+
+    function hardResetToDefaults() {
+      // Prevent autosave from re-creating the state during reload (pagehide/beforeunload).
+      isResetting = true;
+      try {
+        if (saveTimer) clearTimeout(saveTimer);
+      } catch {}
+      saveTimer = null;
       try {
         localStorage.removeItem(LS_KEY);
       } catch (err) {
         console.warn("[JurasEd] localStorage clear failed:", err);
       }
       location.reload();
-    });
+    }
     fileProject.addEventListener("change", async () => {
       const f = fileProject.files?.[0];
       if (!f) return;
@@ -3735,6 +3746,7 @@
 
   // localStorage persistence
   function scheduleSave() {
+    if (isResetting) return;
     if (isHydrating) return;
     if (saveTimer) return;
     saveTimer = setTimeout(() => {
@@ -3744,6 +3756,7 @@
   }
 
   function saveState() {
+    if (isResetting) return;
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(buildStateObject()));
     } catch (err) {
@@ -4331,10 +4344,14 @@
     // - v5: 20-byte header, uint16 numSprites at [5..6], global colors at [13..15].
     let headerBytes = SPD_HEADER_BYTES;
     let numSprites = 0;
+    let declaredNumSprites = 0;
+    let clippedSprites = false;
+    let maxByLen = 0;
     let mc1 = clampInt(colorSlots.mc1, 0, 15);
     let mc2 = clampInt(colorSlots.mc2, 0, 15);
     let bg = 0;
     let hasV5OverlayPairs = false;
+    let numAnims = 0;
 
     if (version === 5) {
       headerBytes = 20;
@@ -4342,7 +4359,8 @@
         await showAlert("Nieprawidłowy plik .spd.", { title: "SpritePad" });
         return;
       }
-      numSprites = (bytes[5] | 0) | ((bytes[6] | 0) << 8);
+      declaredNumSprites = (bytes[5] | 0) | ((bytes[6] | 0) << 8);
+      numSprites = declaredNumSprites;
       bg = clampInt(bytes[13] | 0, 0, 15);
       mc1 = clampInt(bytes[14] | 0, 0, 15);
       mc2 = clampInt(bytes[15] | 0, 0, 15);
@@ -4350,11 +4368,12 @@
       // not \"this sprite is an overlay\" (as in v2).
       hasV5OverlayPairs = true;
     } else {
-      numSprites = (bytes[4] | 0) + 1;
-      const numAnims = (bytes[5] | 0) + 1;
+      declaredNumSprites = (bytes[4] | 0) + 1;
+      numSprites = declaredNumSprites;
+      numAnims = (bytes[5] | 0) + 1;
       mc1 = clampInt(bytes[7] | 0, 0, 15);
       mc2 = clampInt(bytes[8] | 0, 0, 15);
-      const needed = SPD_HEADER_BYTES + numSprites * SPD_SPRITE_BYTES + numAnims * 4;
+      const needed = 0; // legacy guard (we clip via maxByLen below)
       if (bytes.length < needed) {
         await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
         return;
@@ -4368,11 +4387,49 @@
       await showAlert("Nieprawidłowy plik .spd (liczba sprite’ów).", { title: "SpritePad" });
       return;
     }
-    const neededSpritesOnly = headerBytes + numSprites * SPD_SPRITE_BYTES;
+    const neededSpritesOnly = 0; // legacy guard (we clip via maxByLen below)
     if (bytes.length < neededSpritesOnly) {
       await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
       return;
     }
+
+    // Guard against bogus sprite counts (and avoid importing walls of empties).
+    const bytesForSprites = Math.max(0, bytes.length - headerBytes - (version === 5 ? 0 : Math.max(0, numAnims * 4)));
+    maxByLen = Math.floor(bytesForSprites / SPD_SPRITE_BYTES);
+    if (!Number.isFinite(maxByLen) || maxByLen <= 0) {
+      await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
+      return;
+    }
+    if (numSprites > maxByLen) {
+      numSprites = maxByLen;
+      clippedSprites = true;
+    }
+
+    const isEmptySpriteAt = (i) => {
+      const off = headerBytes + i * SPD_SPRITE_BYTES;
+      for (let k = 0; k < SPD_BITMAP_BYTES; k++) if (bytes[off + k]) return false;
+      return true;
+    };
+
+    // Trim trailing empty sprites (common in exported banks).
+    let lastNonEmpty = -1;
+    for (let i = numSprites - 1; i >= 0; i--) {
+      if (!isEmptySpriteAt(i)) {
+        lastNonEmpty = i;
+        break;
+      }
+    }
+    if (lastNonEmpty < 0) {
+      await showAlert("Plik .spd nie zawiera niepustych sprite'ow.", { title: "SpritePad" });
+      return;
+    }
+    // If the last non-empty entry is a v5 base sprite with an overlay-next marker, keep its overlay too.
+    if (hasV5OverlayPairs && lastNonEmpty + 1 < numSprites) {
+      const off = headerBytes + lastNonEmpty * SPD_SPRITE_BYTES;
+      const attr = bytes[off + SPD_BITMAP_BYTES] | 0;
+      if ((attr & 0x10) !== 0) lastNonEmpty++;
+    }
+    numSprites = Math.max(1, lastNonEmpty + 1);
 
     colorSlots.mc1 = mc1;
     colorSlots.mc2 = mc2;
@@ -4447,6 +4504,13 @@
     if (imported.length) {
       setActiveSprite(imported[0].id);
       saveState();
+    }
+
+    if (clippedSprites || (declaredNumSprites && numSprites < declaredNumSprites)) {
+      const msg = [];
+      if (clippedSprites) msg.push(`Uwaga: plik deklarowal ${declaredNumSprites} sprite'ow, ale z pliku da sie wczytac maks. ${maxByLen}.`);
+      if (declaredNumSprites && numSprites < declaredNumSprites) msg.push(`Pominieto puste koncowki (zaimportowano ${numSprites} sprite'ow).`);
+      if (msg.length) console.warn("[JurasEd] SPD import:", msg.join(" "));
     }
   }
 
