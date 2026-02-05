@@ -317,31 +317,7 @@
     </footer>
 
     <div class="evilLayer" aria-hidden="true">
-      <svg class="evilSigil" viewBox="0 0 200 200">
-        <defs>
-          <radialGradient id="sigilGlow" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stop-color="rgba(255,45,45,.45)"/>
-            <stop offset="55%" stop-color="rgba(255,45,45,.15)"/>
-            <stop offset="100%" stop-color="rgba(255,45,45,0)"/>
-          </radialGradient>
-        </defs>
-        <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(255,45,45,.25)" stroke-width="2"/>
-        <circle cx="100" cy="100" r="62" fill="none" stroke="rgba(255,45,45,.18)" stroke-width="2"/>
-        <circle cx="100" cy="100" r="96" fill="url(#sigilGlow)"/>
-        <!-- pentagram (not a filled star) -->
-        <path d="M100 28 L145.5 162 L30.3 78.3 L169.7 78.3 L54.5 162 Z"
-              fill="none" stroke="rgba(255,45,45,.38)" stroke-width="2.4" stroke-linejoin="round"/>
-        <path d="M100 28 L54.5 162 M145.5 162 L30.3 78.3 M30.3 78.3 L169.7 78.3 M169.7 78.3 L54.5 162"
-              fill="none" stroke="rgba(255,45,45,.22)" stroke-width="1.2" stroke-linecap="round"/>
-      </svg>
-      <div class="evilCandles" aria-hidden="true">
-        <div class="candle candle--top"></div>
-        <div class="candle candle--tr"></div>
-        <div class="candle candle--br"></div>
-        <div class="candle candle--bl"></div>
-        <div class="candle candle--tl"></div>
-      </div>
-      <canvas id="fireCanvas" class="evilFire"></canvas>
+      <canvas id="fireCanvas" class="evilCanvas"></canvas>
     </div>
 
     <input id="fileProject" type="file" accept="application/json" hidden />
@@ -468,6 +444,16 @@ Repo ma workflow do Pages (`.github/workflows/pages.yml`).
 - Zmiana rozmiaru płótna stara się **zachować** istniejące piksele (rozszerza przez transparent).
 - Przy zmniejszaniu, jeśli grozi utrata danych, pojawi się ostrzeżenie.
     </script>
+
+    <div id="evilCursor" aria-hidden="true">
+      <svg class="evilCursor__icon" viewBox="0 0 16 16" width="16" height="16" shape-rendering="crispEdges" aria-hidden="true">
+        <!-- tiny 4-pixel cursor (matches the trail flame vibe) -->
+        <rect class="evilCursor__px" x="7" y="7" width="1" height="1" fill="#ff2d2d"/>
+        <rect class="evilCursor__px" x="8" y="7" width="1" height="1" fill="#ffb24a"/>
+        <rect class="evilCursor__px" x="7" y="8" width="1" height="1" fill="#ff6a00"/>
+        <rect class="evilCursor__px" x="8" y="8" width="1" height="1" fill="#ffd27a"/>
+      </svg>
+    </div>
 
     <script src="app.js"></script>
   </body>

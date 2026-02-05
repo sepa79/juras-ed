@@ -69,6 +69,7 @@
   const btnRedo = el("btnRedo");
   const btnTheme = el("btnTheme");
   const fireCanvas = el("fireCanvas");
+  const evilCursorEl = el("evilCursor");
   const btnHelp = el("btnHelp");
   const btnHotkeys = el("btnHotkeys");
   const btnLang = el("btnLang");
@@ -199,6 +200,15 @@
   let fireRunning = false;
   let fireAnim = null;
   let fireOnResize = null;
+  let evilSpinStart = 0;
+  let evilMotionRaf = null;
+  let evilMouseX = 0.5;
+  let evilMouseY = 0.5;
+  let evilCursorX = 0;
+  let evilCursorY = 0;
+  let evilCursorHitRaf = null;
+  let evilCursorLastHitAt = 0;
+  let evilCursorVisible = false;
   let helpOpen = false;
   let helpPrevFocus = null;
   let confirmOpen = false;
@@ -401,6 +411,8 @@
   ensureProjectName();
   syncProjectNameUi();
   syncLsInfo();
+  wireEvilMotion();
+  wireEvilCursor();
 
   function wirePersistenceGuards() {
     // localStorage writes are debounced; flush immediately when leaving the page
@@ -410,6 +422,42 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") saveState();
     });
+  }
+
+  function wireEvilMotion() {
+    const root = document.documentElement;
+    const onMove = (e) => {
+      evilMouseX = clamp01(e.clientX / Math.max(1, window.innerWidth));
+      evilMouseY = clamp01(e.clientY / Math.max(1, window.innerHeight));
+      if (evilMotionRaf) return;
+      evilMotionRaf = requestAnimationFrame(() => {
+        evilMotionRaf = null;
+        const active = theme === "dark-hell" || theme === "dark-candles";
+        if (!active) {
+          root.style.removeProperty("--evil-pan-x");
+          root.style.removeProperty("--evil-pan-y");
+          root.style.removeProperty("--evil-rot-x");
+          root.style.removeProperty("--evil-rot-y");
+          return;
+        }
+        const nx = (evilMouseX - 0.5) * 2; // -1..1
+        const ny = (evilMouseY - 0.5) * 2; // -1..1
+        root.style.setProperty("--evil-pan-x", `${nx * 26}px`);
+        root.style.setProperty("--evil-pan-y", `${ny * 16}px`);
+        root.style.setProperty("--evil-rot-y", `${nx * 6}deg`);
+        root.style.setProperty("--evil-rot-x", `${-ny * 5}deg`);
+      });
+    };
+    document.addEventListener("mousemove", onMove, { passive: true });
+    // initial
+    onMove({ clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 });
+  }
+
+  function clamp01(v) {
+    if (!Number.isFinite(v)) return 0;
+    if (v < 0) return 0;
+    if (v > 1) return 1;
+    return v;
   }
 
   function wireEvents() {
@@ -1702,8 +1750,7 @@
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle =
-      document.documentElement.dataset.theme === "dark" ? rgbaFromHex(bgColor, 0.22) : bgColor;
+    ctx.fillStyle = isDarkTheme(theme) ? rgbaFromHex(bgColor, 0.22) : bgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
 
@@ -2558,6 +2605,10 @@
     return "light";
   }
 
+  function isDarkTheme(value) {
+    return typeof value === "string" && value.startsWith("dark");
+  }
+
   function renderHotkeys() {
     const section = (titleKey, items) => {
       const lis = items
@@ -2800,6 +2851,76 @@
     });
   }
 
+  function wireEvilCursor() {
+    const onMove = (e) => {
+      evilCursorX = e.clientX;
+      evilCursorY = e.clientY;
+      // Fast path: follow the pointer via transform (no layout).
+      evilCursorEl.style.transform = `translate3d(${evilCursorX}px, ${evilCursorY}px, 0) translate(-50%,-50%)`;
+      scheduleEvilCursorHitTest();
+    };
+    document.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener(
+      "mouseleave",
+      () => {
+        evilCursorX = -9999;
+        evilCursorY = -9999;
+        evilCursorEl.style.transform = `translate3d(${evilCursorX}px, ${evilCursorY}px, 0) translate(-50%,-50%)`;
+        setEvilCursorVisible(false);
+      },
+      { passive: true },
+    );
+    // Initial state.
+    evilCursorEl.style.transform = `translate3d(${window.innerWidth / 2}px, ${window.innerHeight / 2}px, 0) translate(-50%,-50%)`;
+    updateEvilCursorVisibility(true);
+  }
+
+  function isEvilThemeActive() {
+    return theme === "dark-hell" || theme === "dark-candles";
+  }
+
+  function scheduleEvilCursorHitTest(force) {
+    if (!isEvilThemeActive()) return;
+    const now = performance.now();
+    if (!force && now - evilCursorLastHitAt < 80) return; // ~12.5 Hz
+    if (evilCursorHitRaf) return;
+    evilCursorHitRaf = requestAnimationFrame(() => {
+      evilCursorHitRaf = null;
+      evilCursorLastHitAt = performance.now();
+      updateEvilCursorVisibility();
+    });
+  }
+
+  function setEvilCursorVisible(visible) {
+    if (evilCursorVisible === visible) return;
+    evilCursorVisible = visible;
+    evilCursorEl.style.opacity = visible ? "1" : "0";
+  }
+
+  function updateEvilCursorVisibility(force) {
+    if (!isEvilThemeActive()) {
+      setEvilCursorVisible(false);
+      return;
+    }
+    if (evilCursorX < 0 || evilCursorY < 0) {
+      setEvilCursorVisible(false);
+      return;
+    }
+
+    const rect = wrap.getBoundingClientRect();
+    const overEditor = evilCursorX >= rect.left && evilCursorX <= rect.right && evilCursorY >= rect.top && evilCursorY <= rect.bottom;
+    if (overEditor) {
+      setEvilCursorVisible(false);
+      return;
+    }
+
+    const hit = document.elementFromPoint(evilCursorX, evilCursorY);
+    const overUiContainer = !!hit?.closest?.(".card, .panel, .topbar, .statusbar, .modal, .modal__card");
+    const overInteractive = !!hit?.closest?.("button, a, input, select, textarea, [role='button'], .btn, .iconBtn, .overlayBtn");
+    setEvilCursorVisible(!(overUiContainer || overInteractive));
+    if (force) scheduleEvilCursorHitTest(true);
+  }
+
   function applyTheme(next) {
     next = normalizeTheme(next);
     const root = document.documentElement;
@@ -2807,15 +2928,17 @@
     else root.dataset.theme = next;
     btnTheme.setAttribute("aria-pressed", next !== "light" ? "true" : "false");
     btnTheme.title = `Theme: ${next}`;
-    setFireEnabled(next === "dark-hell");
+    setEvilEnabled(next === "dark-hell" || next === "dark-candles");
+    updateEvilCursorVisibility(true);
   }
 
-  function setFireEnabled(enabled) {
+  function setEvilEnabled(enabled) {
     if (!fireCanvas) return;
     if (enabled) {
       if (fireRunning) return;
       fireRunning = true;
-      startFire();
+      evilSpinStart = performance.now();
+      startEvilRenderer();
       return;
     }
     fireRunning = false;
@@ -2827,51 +2950,384 @@
     if (ctx) ctx.clearRect(0, 0, fireCanvas.width, fireCanvas.height);
   }
 
-  function startFire() {
+  function evilSpinAngle(now) {
+    const periodMs = 18000;
+    const t = ((now - evilSpinStart) % periodMs) / periodMs;
+    return t * Math.PI * 2;
+  }
+
+  function rotX3d(y, z, a) {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    return { y: y * c - z * s, z: y * s + z * c };
+  }
+
+  function rotY3d(x, z, a) {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    return { x: x * c + z * s, z: -x * s + z * c };
+  }
+
+  function startEvilRenderer() {
     const ctx = fireCanvas.getContext("2d", { alpha: true });
     if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
 
-    const scale = 4;
-    const width = Math.max(80, Math.floor(window.innerWidth / scale));
+    const pickScale = () => {
+      const s = Math.round(Math.min(window.innerWidth, window.innerHeight) / 240);
+      return clampInt(s, 4, 7);
+    };
+    const scale = pickScale();
+    const width = Math.max(140, Math.floor(window.innerWidth / scale));
     const height = Math.max(120, Math.floor(window.innerHeight / scale));
     fireCanvas.width = width;
     fireCanvas.height = height;
 
-    const heat = new Uint16Array(width * height);
+    let heatA = new Uint16Array(width * height);
+    let heatB = new Uint16Array(width * height);
     const img = ctx.createImageData(width, height);
     const palette = buildFirePalette();
+    const bottomSeed = new Uint16Array(width);
+    for (let x = 0; x < width; x++) bottomSeed[x] = 170 + ((Math.random() * 85) | 0);
+    let bottomTick = 0;
 
-    const step = () => {
-      if (!fireRunning) return;
-      // Seed bottom row.
-      for (let x = 0; x < width; x++) {
-        const v = 180 + ((Math.random() * 75) | 0);
-        heat[(height - 1) * width + x] = v;
+    const seedBlob = (arr, sx, sy, base, rand, radius) => {
+      const r = radius;
+      for (let yy = -r; yy <= r; yy++) {
+        for (let xx = -r; xx <= r; xx++) {
+          const x = sx + xx;
+          const y = sy + yy;
+          if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
+          const d2 = xx * xx + yy * yy;
+          if (d2 > r * r) continue;
+          const idx = y * width + x;
+          const v = base + ((Math.random() * rand) | 0);
+          if (v > arr[idx]) arr[idx] = v;
+        }
       }
-      // Propagate up.
-      for (let y = 0; y < height - 1; y++) {
+    };
+
+    const seedCursorFlame = (now, arr) => {
+      if (!evilCursorVisible) return;
+      const wv = Math.max(1, window.innerWidth);
+      const hv = Math.max(1, window.innerHeight);
+      const sx = Math.floor((evilCursorX / wv) * width);
+      const sy = Math.floor((evilCursorY / hv) * height);
+      // Single jittering ember with a rounded "aura" (no long trail / no random splits).
+      const jx = Math.round(Math.sin(now / 80) * 1.2);
+      const jy = Math.round(Math.cos(now / 96) * 0.9);
+      const x = sx + jx;
+      const y = sy + jy;
+      seedBlob(arr, x, y, 140, 95, 2);
+      seedBlob(arr, x, y, 70, 45, 3);
+      // Tiny upward lick.
+      seedBlob(arr, x, y - 2, 95, 60, 1);
+    };
+
+    const candleRects = [];
+
+    const computeSigil = (now) => {
+      const screenW = Math.max(1, window.innerWidth);
+      const screenH = Math.max(1, window.innerHeight);
+      const sx = width / screenW;
+      const sy = height / screenH;
+
+      const rig = Math.min(780, screenW * 0.92);
+      const scale = (rig / 200) * sx;
+
+      const nx = (evilMouseX - 0.5) * 2;
+      const ny = (evilMouseY - 0.5) * 2;
+      const cx = (screenW * 0.5 + nx * 26) * sx;
+      const cy = (screenH * 0.46 + ny * 16) * sy;
+
+      const evilRotX = (-ny * 5 * Math.PI) / 180;
+      const evilRotY = (nx * 6 * Math.PI) / 180;
+      const tiltX = (58 * Math.PI) / 180;
+      const spin = evilSpinAngle(now);
+
+      const cosZ = Math.cos(spin);
+      const sinZ = Math.sin(spin);
+
+      const project = (x0, y0) => {
+        let x = x0 * cosZ - y0 * sinZ;
+        let y = x0 * sinZ + y0 * cosZ;
+        let z = 0;
+        ({ y, z } = rotX3d(y, z, tiltX));
+        ({ y, z } = rotX3d(y, z, evilRotX));
+        ({ x, z } = rotY3d(x, z, evilRotY));
+        // Subtle perspective so the rig feels 3D without skewing the UI too much.
+        const persp = clamp01((z + 110) / 220) * 0.18 + 0.91; // ~0.91..1.09
+        x *= persp;
+        y *= persp;
+        const px = cx + x * scale;
+        const py = cy + y * scale;
+        const depth = clamp01((z / 80 + 1) / 2);
+        return { x: px, y: py, depth };
+      };
+
+      const R = 72;
+      const pts = [];
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI * 2) / 5;
+        pts.push(project(Math.cos(a) * R, Math.sin(a) * R));
+      }
+
+      const ring = [];
+      const ringSteps = 140;
+      for (let i = 0; i <= ringSteps; i++) {
+        const a = (i / ringSteps) * Math.PI * 2;
+        ring.push(project(Math.cos(a) * R, Math.sin(a) * R));
+      }
+
+      return { pts, ring };
+    };
+
+    const inBounds = (x, y) => x >= 0 && y >= 0 && x < width && y < height;
+    const addPixel = (data, x, y, r, g, b, a) => {
+      if (!inBounds(x, y)) return;
+      const j = (y * width + x) * 4;
+      const t = a / 255;
+      data[j + 0] = clampInt(data[j + 0] + r * t, 0, 255);
+      data[j + 1] = clampInt(data[j + 1] + g * t, 0, 255);
+      data[j + 2] = clampInt(data[j + 2] + b * t, 0, 255);
+      data[j + 3] = clampInt(data[j + 3] + a * 0.6, 0, 255);
+    };
+    const setPixel = (data, x, y, r, g, b, a) => {
+      if (!inBounds(x, y)) return;
+      const j = (y * width + x) * 4;
+      data[j + 0] = r;
+      data[j + 1] = g;
+      data[j + 2] = b;
+      data[j + 3] = a;
+    };
+    const drawDot = (data, x, y, t, rgba, mode) => {
+      const r = Math.floor(t / 2);
+      for (let yy = -r; yy <= r; yy++) {
+        for (let xx = -r; xx <= r; xx++) {
+          const px = x + xx;
+          const py = y + yy;
+          if (mode === "set") setPixel(data, px, py, rgba[0], rgba[1], rgba[2], rgba[3]);
+          else addPixel(data, px, py, rgba[0], rgba[1], rgba[2], rgba[3]);
+        }
+      }
+    };
+    const drawLine = (data, x0, y0, x1, y1, thickness, rgba, mode) => {
+      x0 |= 0;
+      y0 |= 0;
+      x1 |= 0;
+      y1 |= 0;
+      let dx = Math.abs(x1 - x0);
+      let sx = x0 < x1 ? 1 : -1;
+      let dy = -Math.abs(y1 - y0);
+      let sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy;
+      for (;;) {
+        drawDot(data, x0, y0, thickness, rgba, mode);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) {
+          err += dy;
+          x0 += sx;
+        }
+        if (e2 <= dx) {
+          err += dx;
+          y0 += sy;
+        }
+      }
+    };
+    const drawRect = (data, x, y, ww, hh, rgba, mode) => {
+      for (let yy = 0; yy < hh; yy++) {
+        for (let xx = 0; xx < ww; xx++) {
+          const px = x + xx;
+          const py = y + yy;
+          if (mode === "set") setPixel(data, px, py, rgba[0], rgba[1], rgba[2], rgba[3]);
+          else addPixel(data, px, py, rgba[0], rgba[1], rgba[2], rgba[3]);
+        }
+      }
+    };
+
+    const cursorBufPos = (now) => {
+      const wv = Math.max(1, window.innerWidth);
+      const hv = Math.max(1, window.innerHeight);
+      const sx = Math.floor((evilCursorX / wv) * width);
+      const sy = Math.floor((evilCursorY / hv) * height);
+      const jx = Math.round(Math.sin(now / 80) * 1.2);
+      const jy = Math.round(Math.cos(now / 96) * 0.9);
+      return { x: sx + jx, y: sy + jy };
+    };
+
+    const addCursorGlow = (data, now) => {
+      if (!evilCursorVisible) return;
+      const { x: cx, y: cy } = cursorBufPos(now);
+      const r = 3;
+      for (let yy = -r; yy <= r; yy++) {
+        for (let xx = -r; xx <= r; xx++) {
+          const d2 = xx * xx + yy * yy;
+          if (d2 > r * r) continue;
+          const d = Math.sqrt(d2);
+          const a = clampInt((1 - d / (r + 0.01)) * 120, 0, 120);
+          // Warm pixel glow around the ember.
+          addPixel(data, cx + xx, cy + yy, 255, 140, 60, a);
+        }
+      }
+    };
+
+    const step = (now) => {
+      if (!fireRunning) return;
+
+      const modeHell = theme === "dark-hell";
+      const modeCandles = theme === "dark-candles";
+      if (!modeHell && !modeCandles) {
+        ctx.clearRect(0, 0, width, height);
+        fireAnim = requestAnimationFrame(step);
+        return;
+      }
+
+      const cool = modeHell ? 1 : 2;
+      for (let i = 0; i < heatA.length; i++) {
+        const v = heatA[i];
+        heatA[i] = v > cool ? v - cool : 0;
+      }
+
+      let sigil = null;
+      candleRects.length = 0;
+
+      // Big fire theme: only the large fire (no candles/sigil).
+      if (modeHell) {
+        const y = height - 1;
+        bottomTick++;
+        const base = 210;
         for (let x = 0; x < width; x++) {
-          const below = (y + 1) * width + x;
-          const left = (y + 1) * width + ((x - 1 + width) % width);
-          const right = (y + 1) * width + ((x + 1) % width);
-          const below2 = Math.min(height - 1, y + 2) * width + x;
-          let v = (heat[below] + heat[left] + heat[right] + heat[below2]) >> 2;
-          const decay = (Math.random() * 3) | 0;
-          v = v > decay ? v - decay : 0;
-          heat[y * width + x] = v;
+          // Low-frequency evolution => slower motion; neighbor blend => jagged, less "sinus".
+          const l = bottomSeed[(x - 1 + width) % width];
+          const r = bottomSeed[(x + 1) % width];
+          let v = (bottomSeed[x] * 4 + l + r) / 6;
+          // Slow drift + small jitter.
+          v += (Math.random() * 9 - 4.5);
+          // Rare dips create "breaks" / pauses.
+          if (((bottomTick + x) & 31) === 0 && Math.random() < 0.55) v -= 95;
+          bottomSeed[x] = clampInt(v, 0, 255);
+
+          const gap = bottomSeed[x] < 135 && Math.random() < 0.55;
+          const out = gap ? ((Math.random() * 18) | 0) : Math.max(base - 55, bottomSeed[x]) + ((Math.random() * 45) | 0);
+          heatA[y * width + x] = out;
+          // A little extra "lift" so the flames reach higher.
+          const lift = clampInt(out * 0.62, 0, 255);
+          heatA[(y - 1) * width + x] = Math.max(heatA[(y - 1) * width + x], lift);
         }
       }
 
-      // Render.
-      for (let i = 0; i < heat.length; i++) {
-        const v = Math.min(255, heat[i]);
+      // Candles theme: candles + sigil, but no big bottom fire sheet.
+      if (modeCandles) {
+        sigil = computeSigil(now);
+        for (const p of sigil.pts) {
+          const s = 0.86 + p.depth * 0.3;
+          const bw = Math.max(2, Math.round(3 * s));
+          const bh = Math.max(7, Math.round(12 * s));
+          const bx = Math.round(p.x);
+          const by = Math.round(p.y);
+          const topY = by - bh;
+          candleRects.push({ x: bx, y: by, bw, bh, topY });
+          seedBlob(heatA, bx, topY, 145, 95, 2);
+        }
+      }
+
+      // Single "ember" under the cursor (only when hovering empty background).
+      seedCursorFlame(now, heatA);
+
+      const nx = (evilMouseX - 0.5) * 2;
+      const wind = clampInt(nx * 1.1, -2, 2);
+      for (let y = 0; y < height - 1; y++) {
+        const y1 = (y + 1) * width;
+        const y2 = Math.min(height - 1, y + 2) * width;
+        const yo = y * width;
+        for (let x = 0; x < width; x++) {
+          const jitter = modeHell ? (((Math.random() * 3) | 0) - 1) : 0;
+          const bx = (x + wind + jitter + width) % width;
+          const below = y1 + bx;
+          const left = y1 + ((bx - 1 + width) % width);
+          const right = y1 + ((bx + 1) % width);
+          const below2 = y2 + bx;
+          let v = (heatA[below] + heatA[left] + heatA[right] + heatA[below2]) >> 2;
+          const decay = (Math.random() * (modeHell ? 2 : 2)) | 0;
+          v = v > decay ? v - decay : 0;
+          heatB[yo + x] = v;
+        }
+      }
+      const last = (height - 1) * width;
+      for (let x = 0; x < width; x++) heatB[last + x] = heatA[last + x];
+
+      const tmp = heatA;
+      heatA = heatB;
+      heatB = tmp;
+
+      if (modeHell) {
+        const y = height - 1;
+        for (let x = 0; x < width; x++) heatA[y * width + x] = Math.max(heatA[y * width + x], 200);
+      }
+      if (modeCandles) {
+        for (const c of candleRects) {
+          seedBlob(heatA, c.x, c.topY, 140, 100, 2);
+        }
+      }
+
+      const data = img.data;
+      for (let i = 0; i < heatA.length; i++) {
+        const v = Math.min(255, heatA[i]);
         const j = i * 4;
         const [r, g, b, a] = palette[v];
-        img.data[j + 0] = r;
-        img.data[j + 1] = g;
-        img.data[j + 2] = b;
-        img.data[j + 3] = a;
+        data[j + 0] = r;
+        data[j + 1] = g;
+        data[j + 2] = b;
+        data[j + 3] = a;
       }
+
+      // Round out the cursor ember so it reads as a circular "ogni(k)" rather than a flat-cut seed.
+      addCursorGlow(data, now);
+
+      if (modeCandles && sigil) {
+        const red = [255, 45, 45, 170];
+        const redGlow = [255, 45, 45, 55];
+        for (let i = 0; i < sigil.ring.length - 1; i++) {
+          const a = sigil.ring[i];
+          const b = sigil.ring[i + 1];
+          drawLine(data, a.x, a.y, b.x, b.y, 1, red, "add");
+        }
+        const star = [0, 2, 4, 1, 3, 0];
+        for (let i = 0; i < star.length - 1; i++) {
+          const a = sigil.pts[star[i]];
+          const b = sigil.pts[star[i + 1]];
+          drawLine(data, a.x, a.y, b.x, b.y, 1, red, "add");
+          drawLine(data, a.x, a.y, b.x, b.y, 3, redGlow, "add");
+        }
+
+        for (const c of candleRects) {
+          const x0 = c.x - Math.floor(c.bw / 2);
+          const y0 = c.y - c.bh;
+          // Draw candle body "behind" the flame, but in front of the sigil:
+          // - keep hot pixels (flame) by checking the heat field, not the rendered alpha
+          //   (sigil is a post-process overlay and shouldn't punch holes in the candle body).
+          const flameHeatKeep = 105;
+          for (let yy = 0; yy < c.bh; yy++) {
+            const py = y0 + yy;
+            if (py < 0 || py >= height) continue;
+            for (let xx = 0; xx < c.bw; xx++) {
+              const px = x0 + xx;
+              if (px < 0 || px >= width) continue;
+              const idx = py * width + px;
+              if (heatA[idx] > flameHeatKeep) continue;
+              const j = idx * 4;
+              data[j + 0] = 0;
+              data[j + 1] = 0;
+              data[j + 2] = 0;
+              data[j + 3] = 255;
+            }
+          }
+          addPixel(data, c.x, y0, 255, 110, 40, 70);
+          addPixel(data, c.x, y0 - 1, 255, 180, 60, 50);
+        }
+      }
+
       ctx.putImageData(img, 0, 0);
       fireAnim = requestAnimationFrame(step);
     };
@@ -2879,7 +3335,7 @@
     if (fireOnResize) window.removeEventListener("resize", fireOnResize);
     fireOnResize = () => {
       if (!fireRunning) return;
-      startFire();
+      startEvilRenderer();
     };
     window.addEventListener("resize", fireOnResize, { passive: true });
     fireAnim = requestAnimationFrame(step);
