@@ -9,6 +9,7 @@
   --danger:#ff5a6a;
   --topbar-h:58px;
   --statusbar-h:74px;
+  --thumb-bg:#203040;
 }
 
 *{box-sizing:border-box}
@@ -141,6 +142,9 @@ html[data-theme^="dark"] .topbarInput:focus-visible{
   outline:2px solid rgba(255,45,45,.55);
 }
 .topbar__actions{display:flex; gap:10px; align-items:center}
+.ioIcon{display:inline-flex; align-items:center; gap:6px}
+.ioIcon svg{width:14px; height:14px; display:block; opacity:.95}
+.ioText{font-weight:800; letter-spacing:.06em}
 .themeDot{
   width:10px;
   height:10px;
@@ -205,35 +209,29 @@ html[data-theme^="dark"] .topbarInput:focus-visible{
   gap:8px;
 }
 .colorSlots{
-  display:grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display:flex;
+  flex-wrap:nowrap;
   gap:8px;
   margin-bottom:10px;
   min-width:0;
 }
 .slotBtn{
-  height:38px;
+  height:34px;
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  justify-content:center;
   padding:0 10px;
   gap:10px;
-  width:100%;
-  max-width:100%;
-  min-width:0;
+  flex: 1 1 0;
+  min-width:52px;
 }
 .slotBtn[aria-pressed="true"]{
   border-color: rgba(106,161,255,.55);
   box-shadow: 0 0 0 1px rgba(106,161,255,.25) inset;
 }
-.slotLbl{font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.04em}
+.slotLbl{font-size:12px; font-weight:900; color:inherit; letter-spacing:.08em; text-shadow: 0 1px 0 rgba(0,0,0,.35)}
 .slotSwatch{
-  width:18px;
-  height:18px;
-  border-radius:6px;
-  border:1px solid rgba(255,255,255,.22);
-  box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset;
-  background:#000;
+  display:none;
 }
 .swatch{
   width:100%;
@@ -353,6 +351,23 @@ html[data-theme^="dark"] .toggle input:focus-visible + .toggleBox{
   justify-content:center;
   gap:8px;
 }
+
+.layerRow{gap:8px}
+.segBtn{
+  flex: 1 1 auto;
+  height: 34px;
+  padding: 0 10px;
+}
+.segBtn[aria-pressed="true"]{
+  border-color: rgba(106,161,255,.55);
+  box-shadow: 0 0 0 1px rgba(106,161,255,.20) inset;
+  background: linear-gradient(180deg, rgba(106,161,255,.20), rgba(106,161,255,.06));
+}
+html[data-theme^="dark"] .segBtn[aria-pressed="true"]{
+  border-color: rgba(255,45,45,.55);
+  box-shadow: 0 0 0 1px rgba(255,45,45,.20) inset;
+  background: linear-gradient(180deg, rgba(255,45,45,.16), rgba(255,45,45,.05));
+}
 .btn:hover{border-color:#3a4770}
 .btn:active{transform: translateY(1px)}
 .btn[disabled]{opacity:.55; cursor:not-allowed}
@@ -423,6 +438,14 @@ html[data-theme^="dark"] .toggle input:focus-visible + .toggleBox{
   justify-content:center;
   overflow:hidden;
 }
+.library--sprites .libThumb{
+  background: var(--thumb-bg);
+}
+.library--sprites .libThumb canvas,
+.spriteInspector__preview canvas,
+.layerRowThumb canvas{
+  background: var(--thumb-bg);
+}
 .libThumb canvas{
   width:100%;
   height:100%;
@@ -437,6 +460,83 @@ html[data-theme^="dark"] .toggle input:focus-visible + .toggleBox{
 .library--sprites .libItem--active .libThumb{
   height:140px;
 }
+
+.spriteInspector{
+  margin-top:10px;
+  padding:10px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.03);
+  border-radius:14px;
+  color: var(--text);
+}
+html[data-theme^="dark"] .spriteInspector{
+  background: rgba(0,0,0,.10);
+  border-color: rgba(255,45,45,.26);
+  border-radius:0;
+}
+.spriteInspector__top{display:flex; gap:10px; align-items:stretch}
+.spriteInspector__preview{
+  width:120px;
+  height:120px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: var(--thumb-bg);
+  overflow:hidden;
+  flex:0 0 auto;
+}
+html[data-theme^="dark"] .spriteInspector__preview{border-radius:0}
+.spriteInspector__preview canvas{
+  width:100%;
+  height:100%;
+  image-rendering: pixelated;
+  display:block;
+}
+.spriteInspector__meta{display:flex; flex-direction:column; gap:8px; min-width:0; flex:1}
+.spriteInspector__name{
+  height:32px;
+  padding:0 10px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  font-size:13px;
+  font-weight:800;
+  outline:none;
+}
+html[data-theme^="dark"] .spriteInspector__name{border-radius:0; border-color: rgba(255,45,45,.32); background: rgba(0,0,0,.14)}
+.spriteInspector__modes{display:flex; gap:8px; flex-wrap:wrap}
+.spriteInspector__actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.spriteInspector__layers{margin-top:10px; display:flex; flex-direction:column; gap:8px}
+.layerRowItem{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:12px;
+  background: rgba(15,20,33,.42);
+  cursor:pointer;
+  color: var(--text);
+}
+html[data-theme^="dark"] .layerRowItem{border-radius:0; border-color: rgba(255,45,45,.22); background: rgba(0,0,0,.10)}
+.layerRowItem[aria-disabled="true"]{opacity:.45; cursor:not-allowed}
+.layerRowItem[aria-pressed="true"]{border-color: rgba(106,161,255,.55); box-shadow: 0 0 0 1px rgba(106,161,255,.18) inset}
+html[data-theme^="dark"] .layerRowItem[aria-pressed="true"]{border-color: rgba(255,45,45,.55); box-shadow: 0 0 0 1px rgba(255,45,45,.18) inset}
+.layerRowThumb{
+  width:44px;
+  height:44px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.12);
+  background: var(--thumb-bg);
+  overflow:hidden;
+  flex:0 0 auto;
+}
+html[data-theme^="dark"] .layerRowThumb{border-radius:0}
+.layerRowThumb canvas{width:100%; height:100%; image-rendering: pixelated; display:block}
+.layerRowLabel{font-size:12px; font-weight:800; min-width:0; color: var(--text)}
+.layerRowHint{font-size:11px; color: var(--muted); min-width:0}
+.layerRowGrow{display:flex; flex-direction:column; gap:2px; min-width:0; flex:1}
+.layerVisBtn{width:32px; height:32px}
 .libRow{
   display:flex;
   align-items:center;
@@ -452,6 +552,19 @@ html[data-theme^="dark"] .toggle input:focus-visible + .toggleBox{
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+.layerBadges{display:flex; gap:6px; align-items:center; flex-wrap:wrap; flex:0 0 auto}
+.layerBadge{
+  font-size:11px;
+  padding:2px 6px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(10,20,40,.22);
+  border-radius:8px;
+  color: var(--muted);
+  line-height: 1.3;
+  white-space:nowrap;
+}
+.layerBadge--on{color: var(--text); border-color: rgba(106,161,255,.22); background: rgba(106,161,255,.12)}
+.layerBadge--dim{opacity:.45}
 .libNameInput{
   width:100%;
   min-width:0;
@@ -754,6 +867,10 @@ html[data-theme^="dark"] .brand__motto{
   width: min(560px, 92vw);
   max-height: min(70vh, 520px);
 }
+.modal__card--md{
+  width: min(720px, 92vw);
+  max-height: min(80vh, 620px);
+}
 html[data-theme^="dark"] .modal__card{
   background: rgba(12,16,26,.62);
 }
@@ -798,6 +915,12 @@ html[data-theme^="dark"] .keysContent kbd{
   border-color: rgba(255,45,45,.32);
   background: rgba(12,16,26,.22);
 }
+
+.ioList{display:grid; grid-template-columns: 1fr; gap:8px; margin-top:10px}
+.ioItem{display:flex; flex-direction:column; align-items:flex-start; text-align:left; padding:10px 12px}
+.ioItem__title{font-weight:900; letter-spacing:.2px}
+.ioItem__sub{margin-top:2px; font-size:12px; color: var(--muted)}
+html[data-theme^="dark"] .ioItem__sub{color: rgba(255,215,215,.72)}
 .modal__actions{
   display:flex;
   justify-content:flex-end;

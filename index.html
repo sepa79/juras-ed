@@ -34,8 +34,13 @@
           aria-label="Collection name"
           placeholder="Moja kolekcja"
         />
-        <button id="btnProjectExport" class="btn" type="button" title="Export project (JSON)" data-i18n="export">Export</button>
-        <button id="btnProjectImport" class="btn" type="button" title="Import project (JSON)" data-i18n="import">Import</button>
+        <button id="btnIO" class="btn" type="button" title="Import / Export">
+          <span class="ioIcon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 18l5-5h-3V3h-4v10H7l5 5z"/></svg>
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
+          </span>
+          <span class="ioText">I/O</span>
+        </button>
         <button id="btnSave" class="btn btn--primary" type="button" data-i18n="save_png">Zapisz PNG</button>
         <button id="btnHelp" class="btn" type="button" title="Pomoc" data-i18n="help">Pomoc</button>
       </div>
@@ -62,6 +67,10 @@
               <span class="slotLbl">OUT</span>
               <span id="slotOutSwatch" class="slotSwatch" aria-hidden="true"></span>
             </button>
+            <button id="slotCheat" class="btn slotBtn slotBtn--cheat" type="button" aria-pressed="false" title="Cheat (5)" hidden>
+              <span class="slotLbl">CH</span>
+              <span id="slotCheatSwatch" class="slotSwatch" aria-hidden="true"></span>
+            </button>
           </div>
           <div id="palette" class="palette" role="radiogroup" aria-label="Paleta kolorów C64"></div>
           <div class="row">
@@ -71,6 +80,17 @@
 
         <section class="card">
           <h2 class="card__title" data-i18n="tools">Narzędzia</h2>
+          <div class="row layerRow" id="layerRow" aria-label="C64 Layers" hidden>
+            <button id="btnLayerMC" class="btn segBtn" type="button" aria-pressed="true" title="Edit: MC">
+              <span class="segText">MC</span>
+            </button>
+            <button id="btnLayerOUT" class="btn segBtn" type="button" aria-pressed="false" title="Edit: OUT">
+              <span class="segText">OUT</span>
+            </button>
+            <button id="btnLayerCheat" class="btn segBtn" type="button" aria-pressed="false" title="Edit: CHEAT">
+              <span class="segText">CHEAT</span>
+            </button>
+          </div>
           <div class="row">
             <label class="toggle toggleBtn">
               <input id="widePixel" type="checkbox" />
@@ -268,19 +288,43 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
             </button>
           </div>
-          <div id="spritesBody">
-            <div class="row">
-              <button id="btnAddSprite" class="iconBtn" type="button" title="Add sprite" aria-label="Add sprite">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v14h-2V5zm-6 6h14v2H5v-2z"/></svg>
-              </button>
-              <button id="btnImportSpritePng" class="iconBtn" type="button" title="Import PNG as sprite" aria-label="Import PNG as sprite">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 18l5-5h-3V3h-4v10H7l5 5z"/></svg>
-              </button>
-              <button id="btnExportSpritePng" class="iconBtn" type="button" title="Export active sprite PNG" aria-label="Export active sprite PNG">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
-              </button>
-            </div>
+            <div id="spritesBody">
+              <div class="row">
+                <button id="btnAddSprite" class="iconBtn" type="button" title="Add sprite" aria-label="Add sprite">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v14h-2V5zm-6 6h14v2H5v-2z"/></svg>
+                </button>
+              </div>
             <div class="hint" data-i18n="sprites_hint">Klik miniatury przełącza aktywną edycję.</div>
+            <div id="spriteInspector" class="spriteInspector" hidden>
+              <div class="spriteInspector__top">
+                <div class="spriteInspector__preview" aria-label="Active sprite preview">
+                  <canvas id="spriteInspectorCanvas" width="1" height="1"></canvas>
+                </div>
+                <div class="spriteInspector__meta">
+                  <input
+                    id="spriteInspectorName"
+                    class="spriteInspector__name"
+                    type="text"
+                    value=""
+                    maxlength="40"
+                    autocomplete="off"
+                    aria-label="Sprite name"
+                  />
+                  <div class="spriteInspector__actions">
+                    <button id="inspToSwatch" class="iconBtn" type="button" title="-> Swatch" aria-label="-> Swatch">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 7h14v14H7V7z"/><path fill="currentColor" d="M3 3h14v2H5v12H3V3z"/></svg>
+                    </button>
+                    <button id="inspDuplicate" class="iconBtn" type="button" title="Duplicate" aria-label="Duplicate">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16h-9V7h9v14z"/></svg>
+                    </button>
+                    <button id="inspDelete" class="iconBtn" type="button" title="Delete (Shift: bez potwierdzenia)" aria-label="Delete">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="spriteInspectorLayers" class="spriteInspector__layers" aria-label="Layers"></div>
+            </div>
             <div id="spriteList" class="library library--sprites"></div>
           </div>
         </section>
@@ -292,11 +336,6 @@
             </button>
           </div>
           <div id="swatchesBody">
-              <div class="row">
-                 <button id="btnImportSwatchPng" class="iconBtn" type="button" title="Import PNG as swatch" aria-label="Import PNG as swatch">
-                 <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 18l5-5h-3V3h-4v10H7l5 5z"/></svg>
-                 </button>
-               </div>
             <div class="hint" data-i18n="swatches_hint">Ctrl+C dodaje wycinek. Klik miniatury ustawia Paste (wielokrotnie).</div>
             <div id="libraryList" class="library library--swatches"></div>
           </div>
@@ -321,8 +360,28 @@
     </div>
 
     <input id="fileProject" type="file" accept="application/json" hidden />
+    <input id="fileSpd" type="file" accept=".spd,application/octet-stream" hidden />
     <input id="fileSpritePng" type="file" accept="image/png" hidden />
     <input id="fileSwatchPng" type="file" accept="image/png" hidden />
+
+    <div id="ioModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="ioTitle">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__card modal__card--md" role="document">
+        <div class="modal__head">
+          <div id="ioTitle" class="modal__title" data-i18n="io_title">Import / Export</div>
+          <button id="btnIoClose" class="iconBtn" type="button" title="Zamknij" aria-label="Zamknij">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3 1.4 1.4z"/></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <div class="row">
+            <button id="ioActionImport" class="btn segBtn" type="button" aria-pressed="true" data-i18n="io_import">Import</button>
+            <button id="ioActionExport" class="btn segBtn" type="button" aria-pressed="false" data-i18n="io_export">Export</button>
+          </div>
+          <div id="ioList" class="ioList" aria-label="Import/Export options"></div>
+        </div>
+      </div>
+    </div>
 
     <div id="helpModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="helpTitle">
       <div class="modal__backdrop" data-close></div>

@@ -43,10 +43,12 @@
   const slotMc1Btn = el("slotMc1");
   const slotMc2Btn = el("slotMc2");
   const slotOutBtn = el("slotOut");
+  const slotCheatBtn = el("slotCheat");
   const slotFgSwatch = el("slotFgSwatch");
   const slotMc1Swatch = el("slotMc1Swatch");
   const slotMc2Swatch = el("slotMc2Swatch");
   const slotOutSwatch = el("slotOutSwatch");
+  const slotCheatSwatch = el("slotCheatSwatch");
 
   const customResEl = el("customRes");
   const spriteControlsEl = el("spriteControls");
@@ -68,11 +70,13 @@
   const btnUndo = el("btnUndo");
   const btnRedo = el("btnRedo");
   const btnTheme = el("btnTheme");
+  // Modes removed: always C64 + Cheat.
   const fireCanvas = el("fireCanvas");
   const evilCursorEl = el("evilCursor");
   const btnHelp = el("btnHelp");
   const btnHotkeys = el("btnHotkeys");
   const btnLang = el("btnLang");
+  const btnIO = el("btnIO");
   const helpModal = el("helpModal");
   const btnHelpClose = el("btnHelpClose");
   const helpText = el("helpText");
@@ -92,14 +96,23 @@
   const btnSaveNow = el("btnSaveNow");
   const btnLsClear = el("btnLsClear");
 
-  const btnProjectExport = el("btnProjectExport");
-  const btnProjectImport = el("btnProjectImport");
   const fileProject = el("fileProject");
-  const btnImportSpritePng = el("btnImportSpritePng");
-  const btnExportSpritePng = el("btnExportSpritePng");
+  const fileSpd = el("fileSpd");
   const fileSpritePng = el("fileSpritePng");
-  const btnImportSwatchPng = el("btnImportSwatchPng");
   const fileSwatchPng = el("fileSwatchPng");
+  const ioModal = el("ioModal");
+  const btnIoClose = el("btnIoClose");
+  const ioActionImport = el("ioActionImport");
+  const ioActionExport = el("ioActionExport");
+  const ioList = el("ioList");
+
+  const spriteInspectorEl = el("spriteInspector");
+  const spriteInspectorCanvas = el("spriteInspectorCanvas");
+  const spriteInspectorNameEl = el("spriteInspectorName");
+  const spriteInspectorLayersEl = el("spriteInspectorLayers");
+  const inspToSwatch = el("inspToSwatch");
+  const inspDuplicate = el("inspDuplicate");
+  const inspDelete = el("inspDelete");
 
   const transformOverlayEl = el("transformOverlay");
   const btnRollUp = el("btnRollUp");
@@ -129,6 +142,11 @@
   const toolCopyBtn = el("toolCopy");
   const toolPasteBtn = el("toolPaste");
 
+  const layerRow = el("layerRow");
+  const btnLayerMC = el("btnLayerMC");
+  const btnLayerOUT = el("btnLayerOUT");
+  const btnLayerCheat = el("btnLayerCheat");
+
   const ctx = canvas.getContext("2d", { alpha: true });
   ctx.imageSmoothingEnabled = false;
 
@@ -150,7 +168,8 @@
     mc2: 6,
     out: 0,
   };
-  let activeSlot = "fg"; // fg|mc1|mc2|out
+  let cheatColor = 7;
+  let activeSlot = "fg"; // fg|mc1|mc2|out|cheat
   let tool = "pen"; // pen|eraser|line|fill|rect|circle|select
 
   let customRes = !!customResEl.checked;
@@ -175,6 +194,49 @@
   const undoStack = [];
   const redoStack = [];
 
+  function captureAllLayersSnapshot() {
+    const sp = getActiveSprite();
+    if (!sp) return { type: "all", layer: getEditLayer(), mc: new Uint8Array(0), out: new Uint8Array(0), cheat: new Uint8Array(0) };
+    const c64 = ensureC64Layers(sp);
+    return {
+      type: "all",
+      layer: getEditLayer(),
+      mc: c64.mc.slice(),
+      out: c64.out.slice(),
+      cheat: c64.cheat.slice(),
+    };
+  }
+
+  function pushUndo(snapshot = null) {
+    undoStack.push(snapshot ?? pixels.slice());
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack.length = 0;
+    updateHistoryButtons();
+  }
+
+  function pushUndoAllLayers() {
+    pushUndo(captureAllLayersSnapshot());
+  }
+
+  function applyUndoSnapshot(snap) {
+    if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "all") {
+      const sp = getActiveSprite();
+      if (!sp) return;
+      const c64 = ensureC64Layers(sp);
+      c64.mc = snap.mc.slice();
+      c64.out = snap.out.slice();
+      c64.cheat = snap.cheat.slice();
+      sp.pixels = c64.cheat;
+      c64.lastLayer = snap.layer || "mc";
+      setC64Layer(c64.lastLayer, { resetHistory: false });
+      renderSprites();
+      return;
+    }
+    // Single-layer snapshot.
+    pixels = snap;
+    syncActiveSpriteFromCanvas();
+  }
+
   const selection = {
     active: false,
     x0: 0,
@@ -195,6 +257,204 @@
     swatchesCollapsed: false,
   };
   let isHydrating = true;
+
+  const editorMode = "c64_cheat"; // fixed (modes removed)
+
+  function getActiveSprite() {
+    return sprites.find((s) => s.id === activeSpriteId) || null;
+  }
+
+  function resizeLayer(prev, prevW, prevH, nextW, nextH, fill) {
+    const out = new Uint8Array(nextW * nextH);
+    out.fill(fill);
+    const copyW = Math.min(prevW, nextW);
+    const copyH = Math.min(prevH, nextH);
+    for (let y = 0; y < copyH; y++) {
+      const srcOff = y * prevW;
+      const dstOff = y * nextW;
+      for (let x = 0; x < copyW; x++) out[dstOff + x] = prev[srcOff + x];
+    }
+    return out;
+  }
+
+  function ensureC64Layers(sp) {
+    if (!sp) return null;
+    const len = sp.w * sp.h;
+    if (!sp.c64) {
+      sp.c64 = {
+        w: sp.w,
+        h: sp.h,
+        slots: {
+          fg: clampInt(colorSlots.fg, 0, 15),
+          mc1: clampInt(colorSlots.mc1, 0, 15),
+          mc2: clampInt(colorSlots.mc2, 0, 15),
+          out: clampInt(colorSlots.out, 0, 15),
+        },
+        mc: new Uint8Array(len).fill(0), // 0=transparent, 1=MC1, 2=MC2, 3=FG
+        out: new Uint8Array(len).fill(0), // 0=transparent, 1=OUT mask
+        cheat: new Uint8Array(len).fill(TRANSPARENT), // palette indices
+        lastLayer: "mc", // mc|out|cheat (for c64_cheat)
+        lastNonCheatLayer: "mc", // mc|out (for plain c64)
+      };
+      // Keep legacy field as alias for cheat layer (used by older code paths).
+      sp.pixels = sp.c64.cheat;
+      return sp.c64;
+    }
+    // Ensure slots exist.
+    if (!sp.c64.slots || typeof sp.c64.slots !== "object") {
+      sp.c64.slots = { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out };
+    }
+    const prevW = clampInt(sp.c64.w ?? sp.w, 1, MAX_SIZE);
+    const prevH = clampInt(sp.c64.h ?? sp.h, 1, MAX_SIZE);
+    sp.c64.w = sp.w;
+    sp.c64.h = sp.h;
+
+    // Ensure layers exist and match current size.
+    if (!(sp.c64.mc instanceof Uint8Array)) sp.c64.mc = new Uint8Array(len).fill(0);
+    if (!(sp.c64.out instanceof Uint8Array)) sp.c64.out = new Uint8Array(len).fill(0);
+    if (!(sp.c64.cheat instanceof Uint8Array)) sp.c64.cheat = new Uint8Array(len).fill(TRANSPARENT);
+    if (sp.c64.mc.length !== len) sp.c64.mc = resizeLayer(sp.c64.mc, prevW, prevH, sp.w, sp.h, 0);
+    if (sp.c64.out.length !== len) sp.c64.out = resizeLayer(sp.c64.out, prevW, prevH, sp.w, sp.h, 0);
+    if (sp.c64.cheat.length !== len) sp.c64.cheat = resizeLayer(sp.c64.cheat, prevW, prevH, sp.w, sp.h, TRANSPARENT);
+    if (sp.c64.lastLayer !== "mc" && sp.c64.lastLayer !== "out" && sp.c64.lastLayer !== "cheat") sp.c64.lastLayer = "mc";
+    if (sp.c64.lastNonCheatLayer !== "mc" && sp.c64.lastNonCheatLayer !== "out") sp.c64.lastNonCheatLayer = "mc";
+    sp.pixels = sp.c64.cheat;
+    return sp.c64;
+  }
+
+  function ensureSpriteVis(sp) {
+    if (!sp) return { mc: true, out: true, cheat: true };
+    if (!sp.vis || typeof sp.vis !== "object") sp.vis = { mc: true, out: true, cheat: true };
+    sp.vis.mc = sp.vis.mc !== false;
+    sp.vis.out = sp.vis.out !== false;
+    sp.vis.cheat = sp.vis.cheat !== false;
+    return sp.vis;
+  }
+
+  function getEditLayer() {
+    const sp = getActiveSprite();
+    if (!sp) return "mc";
+    const c64 = ensureC64Layers(sp);
+    const layer = c64?.lastLayer || "mc";
+    return layer === "out" ? "out" : layer === "cheat" ? "cheat" : "mc";
+  }
+
+  function layerTransparentValue(layer) {
+    return layer === "png" || layer === "cheat" ? TRANSPARENT : 0;
+  }
+
+  function activePaletteIndex() {
+    if (activeSlot === "cheat") return clampInt(cheatColor, 0, 15);
+    return clampInt(colorSlots[activeSlot], 0, 15);
+  }
+
+  function setActivePaletteIndex(idx) {
+    const v = clampInt(idx, 0, 15);
+    if (activeSlot === "cheat") cheatColor = v;
+    else colorSlots[activeSlot] = v;
+  }
+
+  function slotToMcCode(slot) {
+    if (slot === "mc1") return 1;
+    if (slot === "mc2") return 2;
+    return 3; // fg (default)
+  }
+
+  function currentPaintValue() {
+    const layer = getEditLayer();
+    if (layer === "png" || layer === "cheat") return activePaletteIndex();
+    if (layer === "out") return 1;
+    // mc
+    return slotToMcCode(activeSlot);
+  }
+
+  function currentEraseValue() {
+    return layerTransparentValue(getEditLayer());
+  }
+
+  function canPasteToCurrentLayer() {
+    const layer = getEditLayer();
+    return layer === "cheat";
+  }
+
+  function syncSlotsFromSpriteIfNeeded() {
+    const sp = getActiveSprite();
+    if (!sp) return;
+    const c64 = ensureC64Layers(sp);
+    if (!c64) return;
+    colorSlots.fg = clampInt(c64.slots.fg, 0, 15);
+    colorSlots.mc1 = clampInt(c64.slots.mc1, 0, 15);
+    colorSlots.mc2 = clampInt(c64.slots.mc2, 0, 15);
+    colorSlots.out = clampInt(c64.slots.out, 0, 15);
+    syncSlotUi();
+    syncPaletteSelection();
+  }
+
+  function persistSlotsToSpriteIfNeeded() {
+    const sp = getActiveSprite();
+    if (!sp) return;
+    const c64 = ensureC64Layers(sp);
+    if (!c64) return;
+    c64.slots.fg = clampInt(colorSlots.fg, 0, 15);
+    c64.slots.mc1 = clampInt(colorSlots.mc1, 0, 15);
+    c64.slots.mc2 = clampInt(colorSlots.mc2, 0, 15);
+    c64.slots.out = clampInt(colorSlots.out, 0, 15);
+  }
+
+  function compositeSpritePixels(sp) {
+    if (!sp) return new Uint8Array(0);
+    const w = sp.w;
+    const h = sp.h;
+    const len = w * h;
+    const c64 = ensureC64Layers(sp);
+    const out = new Uint8Array(len).fill(TRANSPARENT);
+    const slots = c64?.slots || colorSlots;
+    const vis = ensureSpriteVis(sp);
+    for (let i = 0; i < len; i++) {
+      // Cheat overlay.
+      if (vis.cheat) {
+        const ch = c64.cheat[i];
+        if (ch !== TRANSPARENT) {
+          out[i] = ch;
+          continue;
+        }
+      }
+      // Outline (hires mask).
+      if (vis.out && c64.out[i]) {
+        out[i] = clampInt(slots.out, 0, 15);
+        continue;
+      }
+      // Multicolor sprite.
+      if (!vis.mc) {
+        out[i] = TRANSPARENT;
+      } else {
+        const mc = c64.mc[i] | 0;
+        if (mc === 1) out[i] = clampInt(slots.mc1, 0, 15);
+        else if (mc === 2) out[i] = clampInt(slots.mc2, 0, 15);
+        else if (mc === 3) out[i] = clampInt(slots.fg, 0, 15);
+        else out[i] = TRANSPARENT;
+      }
+    }
+    return out;
+  }
+
+  function displayPixelIndexAt(sp, idx) {
+    if (!sp) return TRANSPARENT;
+    const c64 = ensureC64Layers(sp);
+    const slots = c64?.slots || colorSlots;
+    if (ensureSpriteVis(sp).cheat) {
+      const ch = c64.cheat[idx];
+      if (ch !== TRANSPARENT) return ch;
+    }
+    const vis = ensureSpriteVis(sp);
+    if (vis.out && c64.out[idx]) return clampInt(slots.out, 0, 15);
+    if (!vis.mc) return TRANSPARENT;
+    const mc = c64.mc[idx] | 0;
+    if (mc === 1) return clampInt(slots.mc1, 0, 15);
+    if (mc === 2) return clampInt(slots.mc2, 0, 15);
+    if (mc === 3) return clampInt(slots.fg, 0, 15);
+    return TRANSPARENT;
+  }
 
   let theme = "light"; // light|dark-hell|dark-candles|dark-plain
   let fireRunning = false;
@@ -218,6 +478,9 @@
   let lang = "pl"; // pl|en
   let keysOpen = false;
   let keysPrevFocus = null;
+  let ioOpen = false;
+  let ioPrevFocus = null;
+  let ioAction = "import"; // import|export
 
   const I18N = {
     pl: {
@@ -240,6 +503,15 @@
       preview_bg: "Tło podglądu",
       grid: "Siatka",
       local_storage: "Local storage",
+      io_title: "Import / Export",
+      io_import: "Import",
+      io_export: "Export",
+      io_project_json: "Projekt (JSON)",
+      io_spritepad_spd: "SpritePad (.spd)",
+      io_sprite_png: "Aktywny sprite (PNG)",
+      io_sprite_png_import: "PNG → sprite",
+      io_swatch_png_import: "PNG → swatch",
+      io_spritesheet_png: "Spritesheet (PNG)",
       save_now: "Zapisz teraz",
       clear_saved: "Wyczyść zapis",
       ls_tip: "Tip: Export/Import na górnym pasku to backup projektu jako plik JSON.",
@@ -259,7 +531,7 @@
       hk_view: "Widok",
       hk_transform: "Transform",
       hk_scroll: "Scroll",
-      hk_colors_desc: "`1` FG, `2` MC1, `3` MC2, `4` OUT",
+      hk_colors_desc: "`1` FG, `2` MC1, `3` MC2, `4` OUT, `5` CH",
       hk_pen: "Pen",
       hk_eraser: "Eraser",
       hk_line: "Line",
@@ -267,20 +539,24 @@
       hk_rect: "Rectangle",
       hk_circle: "Circle",
       hk_select: "Select",
+      hk_layers: "Warstwy",
+      hk_layer_mc: "MC layer (Sprite 1)",
+      hk_layer_out: "OUT layer (Sprite 2)",
+      hk_layer_cheat: "CHEAT layer",
+      hk_vis: "Widoczność warstw (Alt)",
       hk_undo: "Undo",
       hk_redo: "Redo",
       hk_copy: "Copy (Select)",
       hk_paste: "Paste",
       hk_cancel: "Esc cancel paste/selection",
       hk_grid: "Grid toggle",
-      hk_wide: "Wide pixel toggle",
       hk_shape_fill: "Shape fill toggle",
       hk_transform_mode: "Transform mode toggle",
       hk_mirrorx: "Mirror X (draw)",
       hk_mirrory: "Mirror Y (draw)",
       hk_roll: "Roll (arrows in transform mode)",
       hk_zoom: "Wheel = zoom",
-      hk_shift_wheel: "Shift+Wheel = slot 1–4",
+      hk_shift_wheel: "Shift+Wheel = slot 1–5",
       hk_ctrl_wheel: "Ctrl/Cmd+Wheel = change color in active slot",
       ls_base: "Auto-zapis: localStorage",
       lang_title: "Język (PL/EN)",
@@ -295,6 +571,7 @@
       clear_ls_title: "Wyczyść localStorage",
       clear_canvas_title: "Wyczyść",
       clear_canvas_confirm: "Wyczyścić całe płótno?",
+      clear_canvas_confirm_all: "Wyczyścić wszystkie warstwy?",
       delete_sprite_title: "Usuń sprite",
       delete_swatch_title: "Usuń swatch",
       delete_confirm: "Usunąć",
@@ -302,6 +579,12 @@
       confirm: "Potwierdź",
       cancel: "Anuluj",
       ok: "OK",
+      mode_png: "PNG",
+      mode_c64: "C64",
+      mode_c64_cheat: "C64 + Cheat",
+      layer_mc: "MC",
+      layer_out: "OUT",
+      layer_cheat: "CHEAT",
     },
     en: {
       brand_subtitle: "C64 sprite editor for dummies.",
@@ -323,6 +606,15 @@
       preview_bg: "Preview background",
       grid: "Grid",
       local_storage: "Local storage",
+      io_title: "Import / Export",
+      io_import: "Import",
+      io_export: "Export",
+      io_project_json: "Project (JSON)",
+      io_spritepad_spd: "SpritePad (.spd)",
+      io_sprite_png: "Active sprite (PNG)",
+      io_sprite_png_import: "PNG → sprite",
+      io_swatch_png_import: "PNG → swatch",
+      io_spritesheet_png: "Spritesheet (PNG)",
       save_now: "Save now",
       clear_saved: "Clear saved",
       ls_tip: "Tip: Export/Import in the top bar is a JSON backup.",
@@ -342,7 +634,7 @@
       hk_view: "View",
       hk_transform: "Transform",
       hk_scroll: "Scroll",
-      hk_colors_desc: "`1` FG, `2` MC1, `3` MC2, `4` OUT",
+      hk_colors_desc: "`1` FG, `2` MC1, `3` MC2, `4` OUT, `5` CH",
       hk_pen: "Pen",
       hk_eraser: "Eraser",
       hk_line: "Line",
@@ -350,20 +642,24 @@
       hk_rect: "Rectangle",
       hk_circle: "Circle",
       hk_select: "Select",
+      hk_layers: "Layers",
+      hk_layer_mc: "MC layer (Sprite 1)",
+      hk_layer_out: "OUT layer (Sprite 2)",
+      hk_layer_cheat: "CHEAT layer",
+      hk_vis: "Layer visibility (Alt)",
       hk_undo: "Undo",
       hk_redo: "Redo",
       hk_copy: "Copy (Select)",
       hk_paste: "Paste",
       hk_cancel: "Esc cancels paste/selection",
       hk_grid: "Grid toggle",
-      hk_wide: "Wide pixel toggle",
       hk_shape_fill: "Shape fill toggle",
       hk_transform_mode: "Transform mode toggle",
       hk_mirrorx: "Mirror X (draw)",
       hk_mirrory: "Mirror Y (draw)",
       hk_roll: "Roll (arrows in transform mode)",
       hk_zoom: "Wheel = zoom",
-      hk_shift_wheel: "Shift+Wheel = slot 1–4",
+      hk_shift_wheel: "Shift+Wheel = slot 1–5",
       hk_ctrl_wheel: "Ctrl/Cmd+Wheel = change active slot color",
       ls_base: "Autosave: localStorage",
       lang_title: "Language (PL/EN)",
@@ -378,6 +674,7 @@
       clear_ls_title: "Clear localStorage",
       clear_canvas_title: "Clear",
       clear_canvas_confirm: "Clear the entire canvas?",
+      clear_canvas_confirm_all: "Clear all layers?",
       delete_sprite_title: "Delete sprite",
       delete_swatch_title: "Delete swatch",
       delete_confirm: "Delete",
@@ -385,6 +682,12 @@
       confirm: "Confirm",
       cancel: "Cancel",
       ok: "OK",
+      mode_png: "PNG",
+      mode_c64: "C64",
+      mode_c64_cheat: "C64 + Cheat",
+      layer_mc: "MC",
+      layer_out: "OUT",
+      layer_cheat: "CHEAT",
     },
   };
 
@@ -407,6 +710,7 @@
   render();
   isHydrating = false;
   applyTheme(theme);
+  syncThumbBgVar();
   applyLanguage();
   ensureProjectName();
   syncProjectNameUi();
@@ -532,6 +836,15 @@
     bgColorEl.addEventListener("input", () => {
       bgColor = bgColorEl.value || "#203040";
       scheduleSave();
+      renderSprites();
+      syncThumbBgVar();
+      render();
+    });
+    bgColorEl.addEventListener("change", () => {
+      bgColor = bgColorEl.value || "#203040";
+      scheduleSave();
+      renderSprites();
+      syncThumbBgVar();
       render();
     });
     showGridEl.addEventListener("change", () => {
@@ -540,6 +853,10 @@
       render();
     });
     widePixelEl.addEventListener("change", () => {
+      if (widePixelEl.disabled) {
+        widePixelEl.checked = widePixel;
+        return;
+      }
       widePixel = !!widePixelEl.checked;
       if (widePixel && pointer.x >= 0) pointer.x = pointer.x - (pointer.x % 2);
       scheduleSave();
@@ -591,6 +908,7 @@
       applyLanguage();
       scheduleSave();
     });
+    btnIO.addEventListener("click", () => openIO());
     projectNameEl.addEventListener("input", () => {
       projectName = (projectNameEl.value || "").trim();
       ensureProjectName();
@@ -616,20 +934,16 @@
       }
       location.reload();
     });
-    btnProjectExport.addEventListener("click", () => exportProject());
-    btnProjectImport.addEventListener("click", () => {
-      fileProject.value = "";
-      fileProject.click();
-    });
     fileProject.addEventListener("change", async () => {
       const f = fileProject.files?.[0];
       if (!f) return;
       await importProjectFile(f);
     });
 
-    btnImportSpritePng.addEventListener("click", () => {
-      fileSpritePng.value = "";
-      fileSpritePng.click();
+    fileSpd.addEventListener("change", async () => {
+      const f = fileSpd.files?.[0];
+      if (!f) return;
+      await importSpritePadSpd(f);
     });
     fileSpritePng.addEventListener("change", async () => {
       const f = fileSpritePng.files?.[0];
@@ -637,39 +951,51 @@
       await importPngAsSprite(f);
     });
 
-    btnExportSpritePng.addEventListener("click", async () => {
-      await exportActiveSpritePng();
-    });
-
-    btnImportSwatchPng.addEventListener("click", () => {
-      fileSwatchPng.value = "";
-      fileSwatchPng.click();
-    });
     fileSwatchPng.addEventListener("change", async () => {
       const f = fileSwatchPng.files?.[0];
       if (!f) return;
       await importPngAsSwatch(f);
     });
 
-    btnClear.addEventListener("click", async () => {
-      const ok = await askConfirm(t("clear_canvas_confirm"), {
+    btnClear.addEventListener("click", async (e) => {
+      const all = !!e.shiftKey;
+      const ok = await askConfirm(all ? t("clear_canvas_confirm_all") : t("clear_canvas_confirm"), {
         title: t("clear_canvas_title"),
         okText: t("clear_canvas_title"),
       });
       if (!ok) return;
-      pushUndo();
-      pixels.fill(TRANSPARENT);
-      syncActiveSpriteFromCanvas();
+      if (all) {
+        pushUndoAllLayers();
+        const sp = getActiveSprite();
+        if (sp) {
+          const c64 = ensureC64Layers(sp);
+          c64.mc.fill(0);
+          c64.out.fill(0);
+          c64.cheat.fill(TRANSPARENT);
+          sp.pixels = c64.cheat;
+          // Keep editing the current layer buffer reference.
+          pixels = getEditLayer() === "out" ? c64.out : getEditLayer() === "cheat" ? c64.cheat : c64.mc;
+          markSpritesDirty();
+          scheduleSave();
+        } else {
+          pixels.fill(currentEraseValue());
+        }
+      } else {
+        pushUndo();
+        pixels.fill(currentEraseValue());
+        syncActiveSpriteFromCanvas();
+      }
       updateHistoryButtons();
       render();
     });
     btnUndo.addEventListener("click", () => undo());
     btnRedo.addEventListener("click", () => redo());
 
-    slotFgBtn.addEventListener("click", () => setActiveSlot("fg"));
-    slotMc1Btn.addEventListener("click", () => setActiveSlot("mc1"));
-    slotMc2Btn.addEventListener("click", () => setActiveSlot("mc2"));
-    slotOutBtn.addEventListener("click", () => setActiveSlot("out"));
+    slotFgBtn.addEventListener("click", () => selectSlot("fg"));
+    slotMc1Btn.addEventListener("click", () => selectSlot("mc1"));
+    slotMc2Btn.addEventListener("click", () => selectSlot("mc2"));
+    slotOutBtn.addEventListener("click", () => selectSlot("out"));
+    slotCheatBtn.addEventListener("click", () => selectSlot("cheat"));
 
     toolButtons.pen.addEventListener("click", () => setTool("pen"));
     toolButtons.eraser.addEventListener("click", () => setTool("eraser"));
@@ -679,6 +1005,10 @@
     toolButtons.circle.addEventListener("click", () => setTool("circle"));
     toolButtons.select.addEventListener("click", () => setTool("select"));
 
+    btnLayerMC.addEventListener("click", () => setC64Layer("mc"));
+    btnLayerOUT.addEventListener("click", () => setC64Layer("out"));
+    btnLayerCheat.addEventListener("click", () => setC64Layer("cheat"));
+
     toolCopyBtn.addEventListener("click", () => {
       if (tool !== "select") return;
       if (hasSelection()) copySelection();
@@ -686,6 +1016,7 @@
     });
     toolPasteBtn.addEventListener("click", () => {
       if (!copyBuffer) return;
+      if (!canPasteToCurrentLayer()) return;
       pasteMode = true;
       setTool("select");
       updateToolButtons();
@@ -693,6 +1024,38 @@
     });
 
     btnAddSprite.addEventListener("click", () => addSprite());
+
+    spriteInspectorNameEl.addEventListener("input", () => {
+      const sp = getActiveSprite();
+      if (!sp) return;
+      sp.name = (spriteInspectorNameEl.value || "").trim() || "Sprite";
+      scheduleSave();
+      renderSprites();
+    });
+
+    inspToSwatch.addEventListener("click", (e) => {
+      e.preventDefault();
+      const sp = getActiveSprite();
+      if (!sp) return;
+      addToLibrary({ w: sp.w, h: sp.h, data: compositeSpritePixels(sp).slice() });
+    });
+    inspDuplicate.addEventListener("click", (e) => {
+      e.preventDefault();
+      const sp = getActiveSprite();
+      if (!sp) return;
+      duplicateSprite(sp.id);
+    });
+    inspDelete.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const sp = getActiveSprite();
+      if (!sp) return;
+      if (!e.shiftKey) {
+        const msg = lang === "pl" ? `Usunąć ${sp.name}?` : `${t("delete_confirm")} ${sp.name}?`;
+        const ok = await askConfirm(msg, { title: t("delete_sprite_title"), okText: t("delete_ok") });
+        if (!ok) return;
+      }
+      removeSprite(sp.id);
+    });
 
     btnToggleSprites.addEventListener("click", () => {
       uiState.spritesCollapsed = !uiState.spritesCollapsed;
@@ -712,22 +1075,23 @@
         // Scroll to zoom. Modifiers:
         // - Shift + wheel: select color slot (FG/MC1/MC2/OUT)
         // - Ctrl/Meta + wheel: change color in active slot
-        if (e.ctrlKey || e.metaKey) {
-          const dir = e.deltaY > 0 ? 1 : -1;
-          const slotKey = activeSlot;
-          colorSlots[slotKey] = wrapIndex(colorSlots[slotKey] + dir, C64.length);
-          syncSlotUi();
-          syncPaletteSelection();
-          scheduleSave();
-          render();
-          e.preventDefault();
-          return;
-        }
+      if (e.ctrlKey || e.metaKey) {
+        const dir = e.deltaY > 0 ? 1 : -1;
+        if (activeSlot === "cheat") cheatColor = wrapIndex(clampInt(cheatColor, 0, 15) + dir, C64.length);
+        else colorSlots[activeSlot] = wrapIndex(colorSlots[activeSlot] + dir, C64.length);
+        persistSlotsToSpriteIfNeeded();
+        syncSlotUi();
+        syncPaletteSelection();
+        scheduleSave();
+        render();
+        e.preventDefault();
+        return;
+      }
         if (e.shiftKey) {
           const dir = e.deltaY > 0 ? 1 : -1;
-          const order = ["fg", "mc1", "mc2", "out"];
+          const order = ["fg", "mc1", "mc2", "out", "cheat"];
           const idx = order.indexOf(activeSlot);
-          setActiveSlot(order[wrapIndex(idx + dir, order.length)]);
+          selectSlot(order[wrapIndex(idx + dir, order.length)]);
           e.preventDefault();
           return;
         }
@@ -777,6 +1141,59 @@
 
     wrap.addEventListener("keydown", (e) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
+      }
+
+      if (e.altKey && !ctrl) {
+        const sp = getActiveSprite();
+        if (!sp) return;
+        const v = ensureSpriteVis(sp);
+        if (e.key === "m" || e.key === "M") {
+          v.mc = !v.mc;
+          scheduleSave();
+          renderSprites();
+          render();
+          e.preventDefault();
+          return;
+        }
+        if (e.key === "o" || e.key === "O") {
+          v.out = !v.out;
+          scheduleSave();
+          renderSprites();
+          render();
+          e.preventDefault();
+          return;
+        }
+        if (e.key === "h" || e.key === "H") {
+          v.cheat = !v.cheat;
+          scheduleSave();
+          renderSprites();
+          render();
+          e.preventDefault();
+          return;
+        }
+      }
+
+      if (!ctrl) {
+        if (e.key === "m" || e.key === "M") {
+          setC64Layer("mc", { resetHistory: false });
+          e.preventDefault();
+          return;
+        }
+        if (e.key === "o" || e.key === "O") {
+          setC64Layer("out", { resetHistory: false });
+          e.preventDefault();
+          return;
+        }
+        if (e.key === "h" || e.key === "H") {
+          setC64Layer("cheat", { resetHistory: false });
+          e.preventDefault();
+          return;
+        }
+      }
       if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
         openHotkeys();
         e.preventDefault();
@@ -799,7 +1216,7 @@
         return;
       }
       if (ctrl && (e.key === "v" || e.key === "V")) {
-        if (copyBuffer) {
+        if (copyBuffer && canPasteToCurrentLayer()) {
           pasteMode = true;
           setTool("select");
           render();
@@ -816,22 +1233,27 @@
       }
 
       if (e.key === "1") {
-        setActiveSlot("fg");
+        selectSlot("fg");
         e.preventDefault();
         return;
       }
       if (e.key === "2") {
-        setActiveSlot("mc1");
+        selectSlot("mc1");
         e.preventDefault();
         return;
       }
       if (e.key === "3") {
-        setActiveSlot("mc2");
+        selectSlot("mc2");
         e.preventDefault();
         return;
       }
       if (e.key === "4") {
-        setActiveSlot("out");
+        selectSlot("out");
+        e.preventDefault();
+        return;
+      }
+      if (e.key === "5") {
+        selectSlot("cheat");
         e.preventDefault();
         return;
       }
@@ -844,6 +1266,10 @@
         return;
       }
       if (e.key === "w" || e.key === "W") {
+        if (widePixelEl.disabled) {
+          e.preventDefault();
+          return;
+        }
         widePixelEl.checked = !widePixelEl.checked;
         widePixel = !!widePixelEl.checked;
         render();
@@ -956,6 +1382,29 @@
       e.preventDefault();
     });
 
+    btnIoClose.addEventListener("click", () => closeIO());
+    ioModal.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-close]")) closeIO();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!ioOpen) return;
+      closeIO();
+      e.preventDefault();
+    });
+    ioActionImport.addEventListener("click", () => {
+      ioAction = "import";
+      syncIOActionUi();
+      renderIO();
+    });
+    ioActionExport.addEventListener("click", () => {
+      ioAction = "export";
+      syncIOActionUi();
+      renderIO();
+    });
+
     btnConfirmClose.addEventListener("click", () => closeConfirm(false));
     btnConfirmCancel.addEventListener("click", () => closeConfirm(false));
     btnConfirmOk.addEventListener("click", () => closeConfirm(true));
@@ -1008,6 +1457,121 @@
     keysPrevFocus = null;
     if (f && document.contains(f)) f.focus();
     else btnHotkeys.focus();
+  }
+
+  function renderIO() {
+    const options = [
+      {
+        id: "project_json",
+        label: "Project (JSON)",
+        i18n: "io_project_json",
+        action: "both",
+        run: async (kind) => {
+          if (kind === "import") {
+            fileProject.value = "";
+            fileProject.click();
+          } else {
+            exportProject();
+          }
+        },
+      },
+      {
+        id: "spritepad_spd",
+        label: "SpritePad (.spd)",
+        i18n: "io_spritepad_spd",
+        action: "both",
+        run: async (kind) => {
+          if (kind === "import") {
+            fileSpd.value = "";
+            fileSpd.click();
+          } else {
+            await exportSpritePadSpd();
+          }
+        },
+      },
+      {
+        id: "sprite_png",
+        label: "Active sprite (PNG)",
+        i18n: "io_sprite_png",
+        action: "export",
+        run: async () => {
+          await exportActiveSpritePng();
+        },
+      },
+      {
+        id: "sprite_png_import",
+        label: "Sprite (PNG → sprite)",
+        i18n: "io_sprite_png_import",
+        action: "import",
+        run: async () => {
+          fileSpritePng.value = "";
+          fileSpritePng.click();
+        },
+      },
+      {
+        id: "swatch_png_import",
+        label: "Swatch (PNG → swatch)",
+        i18n: "io_swatch_png_import",
+        action: "import",
+        run: async () => {
+          fileSwatchPng.value = "";
+          fileSwatchPng.click();
+        },
+      },
+      {
+        id: "spritesheet_png",
+        label: "Spritesheet (PNG)",
+        i18n: "io_spritesheet_png",
+        action: "export",
+        run: async () => {
+          await exportSpritesheetPng();
+        },
+      },
+    ];
+
+    ioList.innerHTML = "";
+    for (const opt of options) {
+      const allowed = opt.action === "both" || opt.action === ioAction;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ioItem btn";
+      btn.disabled = !allowed;
+      btn.dataset.io = opt.id;
+      btn.innerHTML = `<div class="ioItem__title">${t(opt.i18n)}</div>`;
+      btn.addEventListener("click", async () => {
+        if (btn.disabled) return;
+        await opt.run(ioAction);
+        closeIO();
+      });
+      ioList.appendChild(btn);
+    }
+  }
+
+  function syncIOActionUi() {
+    ioActionImport.setAttribute("aria-pressed", ioAction === "import" ? "true" : "false");
+    ioActionExport.setAttribute("aria-pressed", ioAction === "export" ? "true" : "false");
+  }
+
+  function openIO() {
+    if (ioOpen) return;
+    if (helpOpen) closeHelp();
+    if (keysOpen) closeHotkeys();
+    ioPrevFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ioModal.hidden = false;
+    ioOpen = true;
+    syncIOActionUi();
+    renderIO();
+    btnIoClose.focus();
+  }
+
+  function closeIO() {
+    if (!ioOpen) return;
+    ioModal.hidden = true;
+    ioOpen = false;
+    const f = ioPrevFocus;
+    ioPrevFocus = null;
+    if (f && document.contains(f)) f.focus();
+    else btnIO.focus();
   }
 
   function askConfirm(message, opts = {}) {
@@ -1064,12 +1628,14 @@
       b.style.background = c.hex;
       b.setAttribute("role", "radio");
       b.setAttribute("aria-label", `${idx}: ${c.name}`);
-      b.setAttribute("aria-checked", idx === colorSlots[activeSlot] ? "true" : "false");
+      b.setAttribute("aria-checked", idx === activePaletteIndex() ? "true" : "false");
       b.title = `${idx}: ${c.name} (${c.hex})`;
       b.addEventListener("click", () => {
-        colorSlots[activeSlot] = idx;
+        setActivePaletteIndex(idx);
+        persistSlotsToSpriteIfNeeded();
         syncSlotUi();
         syncPaletteSelection();
+        scheduleSave();
         render();
       });
       paletteEl.appendChild(b);
@@ -1078,25 +1644,76 @@
 
   function syncPaletteSelection() {
     const children = Array.from(paletteEl.children);
-    const sel = colorSlots[activeSlot];
+    const sel = activePaletteIndex();
     children.forEach((node, i) => node.setAttribute("aria-checked", i === sel ? "true" : "false"));
   }
 
+  function textColorForHex(hex) {
+    // Return a readable text color for a given #rrggbb background.
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+    if (!m) return "#ffffff";
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    // sRGB relative luminance approx.
+    const l = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return l > 0.58 ? "#111111" : "#ffffff";
+  }
+
+  function setSlotBtnColor(btn, hex) {
+    if (!btn) return;
+    btn.style.background = hex;
+    btn.style.color = textColorForHex(hex);
+  }
+
   function setActiveSlot(slot) {
-    activeSlot = slot;
-    slotFgBtn.setAttribute("aria-pressed", slot === "fg" ? "true" : "false");
-    slotMc1Btn.setAttribute("aria-pressed", slot === "mc1" ? "true" : "false");
-    slotMc2Btn.setAttribute("aria-pressed", slot === "mc2" ? "true" : "false");
-    slotOutBtn.setAttribute("aria-pressed", slot === "out" ? "true" : "false");
+    const layer = getEditLayer();
+    let next = slot;
+    if (layer !== "cheat" && next === "cheat") next = "fg";
+    if (layer === "mc" && next === "out") next = "fg";
+    if (layer === "out") next = "out";
+    if (layer === "cheat") next = "cheat";
+    activeSlot = next;
+    slotFgBtn.setAttribute("aria-pressed", activeSlot === "fg" ? "true" : "false");
+    slotMc1Btn.setAttribute("aria-pressed", activeSlot === "mc1" ? "true" : "false");
+    slotMc2Btn.setAttribute("aria-pressed", activeSlot === "mc2" ? "true" : "false");
+    slotOutBtn.setAttribute("aria-pressed", activeSlot === "out" ? "true" : "false");
+    slotCheatBtn.setAttribute("aria-pressed", activeSlot === "cheat" ? "true" : "false");
     syncPaletteSelection();
     render();
   }
 
+  function selectSlot(slot) {
+    // Selecting a slot implies selecting the matching editable layer.
+    if (slot === "out") setC64Layer("out", { resetHistory: false });
+    else if (slot === "cheat") setC64Layer("cheat", { resetHistory: false });
+    else setC64Layer("mc", { resetHistory: false });
+    setActiveSlot(slot);
+    updateToolButtons();
+    syncModeUi();
+  }
+
   function syncSlotUi() {
-    slotFgSwatch.style.background = C64[colorSlots.fg].hex;
-    slotMc1Swatch.style.background = C64[colorSlots.mc1].hex;
-    slotMc2Swatch.style.background = C64[colorSlots.mc2].hex;
-    slotOutSwatch.style.background = C64[colorSlots.out].hex;
+    const fgHex = C64[colorSlots.fg].hex;
+    const mc1Hex = C64[colorSlots.mc1].hex;
+    const mc2Hex = C64[colorSlots.mc2].hex;
+    const outHex = C64[colorSlots.out].hex;
+    const chHex = C64[clampInt(cheatColor, 0, 15)].hex;
+
+    // Compact slots: button background = color, label on top.
+    setSlotBtnColor(slotFgBtn, fgHex);
+    setSlotBtnColor(slotMc1Btn, mc1Hex);
+    setSlotBtnColor(slotMc2Btn, mc2Hex);
+    setSlotBtnColor(slotOutBtn, outHex);
+    setSlotBtnColor(slotCheatBtn, chHex);
+
+    // Keep swatches in sync (hidden in CSS, but harmless).
+    slotFgSwatch.style.background = fgHex;
+    slotMc1Swatch.style.background = mc1Hex;
+    slotMc2Swatch.style.background = mc2Hex;
+    slotOutSwatch.style.background = outHex;
+    slotCheatSwatch.style.background = chHex;
   }
 
   function setTool(next) {
@@ -1113,8 +1730,67 @@
   function updateToolButtons() {
     const selectActive = tool === "select";
     toolCopyBtn.disabled = !selectActive || !hasSelection();
-    toolPasteBtn.disabled = !selectActive || !copyBuffer;
+    toolPasteBtn.disabled = !selectActive || !copyBuffer || !canPasteToCurrentLayer();
+    if (!canPasteToCurrentLayer()) pasteMode = false;
     toolPasteBtn.setAttribute("aria-pressed", pasteMode ? "true" : "false");
+  }
+
+  function syncModeUi() {
+    layerRow.hidden = false;
+    btnLayerCheat.hidden = false;
+    btnLayerCheat.disabled = false;
+
+    const layer = getEditLayer();
+    btnLayerMC.setAttribute("aria-pressed", layer === "mc" ? "true" : "false");
+    btnLayerOUT.setAttribute("aria-pressed", layer === "out" ? "true" : "false");
+    btnLayerCheat.setAttribute("aria-pressed", layer === "cheat" ? "true" : "false");
+
+    // In C64 modes we force cursor width based on layer.
+    widePixelEl.disabled = true;
+
+    // Cheat color slot only when cheat mode is available.
+    slotCheatBtn.hidden = false;
+    slotCheatBtn.disabled = false;
+  }
+
+  function setC64Layer(layer, opts = {}) {
+    const sp = getActiveSprite();
+    if (!sp) return;
+    const c64 = ensureC64Layers(sp);
+    let next = layer === "cheat" ? "cheat" : layer === "out" ? "out" : "mc";
+
+    if (next === "cheat") {
+      c64.lastLayer = "cheat";
+    } else {
+      c64.lastNonCheatLayer = next;
+      c64.lastLayer = next; // also update "last" when switching layers inside cheat mode
+    }
+
+    if (next === "mc") {
+      widePixel = true;
+      widePixelEl.checked = true;
+      pixels = c64.mc;
+      if (activeSlot === "out") setActiveSlot("fg");
+      if (activeSlot === "cheat") setActiveSlot("fg");
+    } else if (next === "out") {
+      widePixel = false;
+      widePixelEl.checked = false;
+      pixels = c64.out;
+      setActiveSlot("out");
+    } else {
+      // cheat
+      widePixel = false;
+      widePixelEl.checked = false;
+      pixels = c64.cheat;
+      setActiveSlot("cheat");
+    }
+
+    pasteMode = false;
+    updateToolButtons();
+    syncModeUi();
+    if (opts.resetHistory !== false) resetHistory();
+    scheduleSave();
+    render();
   }
 
   function updatePointer(e) {
@@ -1152,13 +1828,6 @@
     updateHistoryButtons();
   }
 
-  function pushUndo() {
-    undoStack.push(pixels.slice());
-    if (undoStack.length > MAX_HISTORY) undoStack.shift();
-    redoStack.length = 0;
-    updateHistoryButtons();
-  }
-
   function ensureUndo() {
     if (action.pushedUndo) return;
     pushUndo();
@@ -1167,18 +1836,20 @@
 
   function undo() {
     if (undoStack.length === 0) return;
-    redoStack.push(pixels.slice());
-    pixels = undoStack.pop();
-    syncActiveSpriteFromCanvas();
+    const snap = undoStack.pop();
+    if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "all") redoStack.push(captureAllLayersSnapshot());
+    else redoStack.push(pixels.slice());
+    applyUndoSnapshot(snap);
     updateHistoryButtons();
     render();
   }
 
   function redo() {
     if (redoStack.length === 0) return;
-    undoStack.push(pixels.slice());
-    pixels = redoStack.pop();
-    syncActiveSpriteFromCanvas();
+    const snap = redoStack.pop();
+    if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "all") undoStack.push(captureAllLayersSnapshot());
+    else undoStack.push(pixels.slice());
+    applyUndoSnapshot(snap);
     updateHistoryButtons();
     render();
   }
@@ -1201,42 +1872,71 @@
     const nextW = clampInt(w, 1, MAX_SIZE);
     const nextH = clampInt(h, 1, MAX_SIZE);
     if (!canResizeWithoutDataLoss(nextW, nextH)) return false;
+
+    const sp = getActiveSprite();
     const prevW = gridW;
     const prevH = gridH;
-    const prev = pixels;
 
     gridW = nextW;
     gridH = nextH;
-    pixels = new Uint8Array(gridW * gridH).fill(TRANSPARENT);
-    if (keep && prev && prev.length) {
-      const copyW = Math.min(prevW, gridW);
-      const copyH = Math.min(prevH, gridH);
-      for (let y = 0; y < copyH; y++) {
-        for (let x = 0; x < copyW; x++) {
-          pixels[y * gridW + x] = prev[y * prevW + x];
-        }
-      }
+
+    if (!sp) {
+      const prev = pixels;
+      pixels = new Uint8Array(gridW * gridH).fill(TRANSPARENT);
+      if (keep && prev && prev.length) pixels = resizeLayer(prev, prevW, prevH, gridW, gridH, TRANSPARENT);
+      resizeCanvasOnly();
+      if (reset) resetHistory();
+      render();
+      return true;
     }
+
+    // Resize active sprite layers.
+    sp.w = gridW;
+    sp.h = gridH;
+    const c64 = ensureC64Layers(sp);
+    c64.mc = keep ? resizeLayer(c64.mc, prevW, prevH, gridW, gridH, 0) : new Uint8Array(gridW * gridH).fill(0);
+    c64.out = keep ? resizeLayer(c64.out, prevW, prevH, gridW, gridH, 0) : new Uint8Array(gridW * gridH).fill(0);
+    c64.cheat = keep ? resizeLayer(c64.cheat, prevW, prevH, gridW, gridH, TRANSPARENT) : new Uint8Array(gridW * gridH).fill(TRANSPARENT);
+    c64.w = gridW;
+    c64.h = gridH;
+    sp.pixels = c64.cheat;
+
+    // Re-point the active editing buffer.
+    setC64Layer(getEditLayer(), { resetHistory: false });
     resizeCanvasOnly();
     if (reset) resetHistory();
-    // Mirror axes stay centered automatically; nothing to update.
-    syncActiveSpriteFromCanvas();
+    renderSprites();
+    scheduleSave();
     render();
     return true;
   }
 
   function canResizeWithoutDataLoss(nextW, nextH) {
     if (nextW >= gridW && nextH >= gridH) return true;
-    // Shrinking: check if any non-transparent pixels would be cropped.
-    for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        if (x < nextW && y < nextH) continue;
-        if (pixels[y * gridW + x] !== TRANSPARENT) {
-          const ok = confirm("Zmniejszenie rozmiaru może uciąć piksele. Kontynuować?");
-          return ok;
+
+    const sp = getActiveSprite();
+    const confirmOnce = () => confirm("Zmniejszenie rozmiaru może uciąć piksele. Kontynuować?");
+
+    const wouldCrop = (buf, transparentVal) => {
+      if (!buf || !buf.length) return false;
+      for (let y = 0; y < gridH; y++) {
+        for (let x = 0; x < gridW; x++) {
+          if (x < nextW && y < nextH) continue;
+          if (buf[y * gridW + x] !== transparentVal) return true;
         }
       }
+      return false;
+    };
+
+    if (!sp) {
+      if (wouldCrop(pixels, TRANSPARENT)) return confirmOnce();
+      return true;
     }
+
+    const c64 = ensureC64Layers(sp);
+    if (wouldCrop(c64.mc, 0)) return confirmOnce();
+    if (wouldCrop(c64.out, 0)) return confirmOnce();
+    if (wouldCrop(c64.cheat, TRANSPARENT)) return confirmOnce();
     return true;
   }
 
@@ -1250,7 +1950,7 @@
   function handlePointerDown() {
     if (pointer.x < 0 || pointer.y < 0) return;
     if (tool === "select") {
-      if (pasteMode && copyBuffer) {
+      if (pasteMode && copyBuffer && canPasteToCurrentLayer()) {
         // Paste at cursor.
         ensureUndo();
         const erase = action.button === 2;
@@ -1271,7 +1971,7 @@
       return;
     }
     if (tool === "fill") {
-      const value = action.button === 2 ? TRANSPARENT : colorSlots[activeSlot];
+      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
       if (fillWouldChange(pointer.x, pointer.y, value)) {
         ensureUndo();
         action.changed = floodFill(pointer.x, pointer.y, value) || action.changed;
@@ -1280,7 +1980,7 @@
     }
 
     if (tool === "pen" || tool === "eraser") {
-      const value = action.button === 2 || tool === "eraser" ? TRANSPARENT : colorSlots[activeSlot];
+      const value = action.button === 2 || tool === "eraser" ? currentEraseValue() : currentPaintValue();
       if (wouldStampChange(pointer.x, pointer.y, value)) {
         ensureUndo();
         action.changed = stamp(pointer.x, pointer.y, value) || action.changed;
@@ -1303,7 +2003,7 @@
       return;
     }
     if (tool === "pen" || tool === "eraser") {
-      const value = action.button === 2 || tool === "eraser" ? TRANSPARENT : colorSlots[activeSlot];
+      const value = action.button === 2 || tool === "eraser" ? currentEraseValue() : currentPaintValue();
       if (wouldStampChange(pointer.x, pointer.y, value)) {
         ensureUndo();
         action.changed = stamp(pointer.x, pointer.y, value) || action.changed;
@@ -1323,7 +2023,7 @@
       return;
     }
     if (tool === "line") {
-      const value = action.button === 2 ? TRANSPARENT : colorSlots[activeSlot];
+      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
       if (lineWouldChange(action.startX, action.startY, pointer.x, pointer.y, value)) {
         ensureUndo();
         action.changed = drawLine(action.startX, action.startY, pointer.x, pointer.y, value) || action.changed;
@@ -1331,7 +2031,7 @@
       return;
     }
     if (tool === "rect") {
-      const value = action.button === 2 ? TRANSPARENT : colorSlots[activeSlot];
+      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
       const willChange = rectWouldChange(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill });
       if (willChange) {
         ensureUndo();
@@ -1341,7 +2041,7 @@
       return;
     }
     if (tool === "circle") {
-      const value = action.button === 2 ? TRANSPARENT : colorSlots[activeSlot];
+      const value = action.button === 2 ? currentEraseValue() : currentPaintValue();
       const willChange = circleWouldChange(action.startX, action.startY, pointer.x, pointer.y, value, { fill: shapeFill });
       if (willChange) {
         ensureUndo();
@@ -1754,10 +2454,12 @@
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
 
-    // Pixels.
+    // Pixels (display view depends on mode).
+    const sp = getActiveSprite();
     for (let y = 0; y < gridH; y++) {
       for (let x = 0; x < gridW; x++) {
-        const p = pixels[y * gridW + x];
+        const idx = y * gridW + x;
+        const p = sp ? displayPixelIndexAt(sp, idx) : pixels[idx];
         if (p === TRANSPARENT) continue;
         ctx.fillStyle = C64[p].hex;
         ctx.fillRect(x * zoom, y * zoom, zoom, zoom);
@@ -1918,10 +2620,13 @@
     }
 
     const cursor = pointer.over && pointer.x >= 0 && pointer.y >= 0 ? `x:${pointer.x} y:${pointer.y}` : "—";
-    const modeLabel = widePixel ? "wide (2×)" : "normal";
+    const editLayer = getEditLayer();
+    const layerLabel =
+      editLayer === "png" ? "" : editLayer === "mc" ? t("layer_mc") : editLayer === "out" ? t("layer_out") : t("layer_cheat");
+    const modeLabel = `${widePixel ? "wide (2×)" : "normal"} | ${layerLabel || t("layer_cheat")}`;
     const canvasLabel = customRes ? `${gridW}×${gridH}px` : `${spritesX}×${spritesY} sprite (${gridW}×${gridH})`;
     const toolLabel = toolName(tool);
-    const slotLabel = `${slotName(activeSlot)} (${C64[colorSlots[activeSlot]].name})`;
+    const slotLabel = `${slotName(activeSlot)} (${C64[activePaletteIndex()].name})`;
 
     setStatus("statusCursor", cursor);
     setStatus("statusTool", toolLabel);
@@ -1966,10 +2671,12 @@
     const w = x1 - x0 + 1;
     const h = y1 - y0 + 1;
     if (w <= 0 || h <= 0) return;
+    const sp = getActiveSprite();
+    const view = sp ? compositeSpritePixels(sp) : pixels;
     const data = new Uint8Array(w * h).fill(TRANSPARENT);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        data[y * w + x] = pixels[(y0 + y) * gridW + (x0 + x)];
+        data[y * w + x] = view[(y0 + y) * gridW + (x0 + x)];
       }
     }
     addToLibrary({ w, h, data });
@@ -1977,13 +2684,15 @@
 
   function pasteAt(x, y, opts = {}) {
     if (!copyBuffer) return false;
+    if (!canPasteToCurrentLayer()) return false;
     const erase = !!opts.erase;
+    const eraseValue = currentEraseValue();
     let changed = false;
     for (let yy = 0; yy < copyBuffer.h; yy++) {
       for (let xx = 0; xx < copyBuffer.w; xx++) {
         const v = copyBuffer.data[yy * copyBuffer.w + xx];
         if (v === TRANSPARENT) continue;
-        changed = setPixelRaw(x + xx, y + yy, erase ? TRANSPARENT : v) || changed;
+        changed = setPixelRaw(x + xx, y + yy, erase ? eraseValue : v) || changed;
       }
     }
     return changed;
@@ -2004,7 +2713,19 @@
   function swatchToSprite(it) {
     const id = makeId("sprite");
     const name = `Sprite ${sprites.length + 1}`;
-    sprites.push({ id, name, w: it.w, h: it.h, pixels: it.data.slice() });
+    const cheat = it.data.slice();
+    const sp = { id, name, w: it.w, h: it.h, pixels: cheat };
+    sp.c64 = {
+      w: it.w,
+      h: it.h,
+      slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out },
+      mc: new Uint8Array(it.w * it.h).fill(0),
+      out: new Uint8Array(it.w * it.h).fill(0),
+      cheat,
+      lastLayer: "cheat",
+      lastNonCheatLayer: "mc",
+    };
+    sprites.push(sp);
     setActiveSprite(id);
   }
 
@@ -2119,6 +2840,9 @@
 
   function drawThumb(canvasEl, it) {
     const cctx = canvasEl.getContext("2d", { alpha: true });
+    cctx.save();
+    cctx.setTransform(1, 0, 0, 1, 0, 0);
+    cctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     const img = cctx.createImageData(it.w, it.h);
     for (let i = 0; i < it.data.length; i++) {
       const v = it.data[i];
@@ -2134,6 +2858,15 @@
       }
     }
     cctx.putImageData(img, 0, 0);
+    cctx.restore();
+  }
+
+  function thumbBgColor() {
+    return bgColor;
+  }
+
+  function syncThumbBgVar() {
+    document.documentElement.style.setProperty("--thumb-bg", thumbBgColor());
   }
 
   function roll(dx, dy) {
@@ -2155,8 +2888,20 @@
 
   function initSprites() {
     const id = makeId("sprite");
-    sprites.push({ id, name: "Sprite 1", w: gridW, h: gridH, pixels });
+    const sp = { id, name: "Sprite 1", w: gridW, h: gridH, pixels: new Uint8Array(gridW * gridH).fill(TRANSPARENT) };
+    sp.c64 = {
+      w: gridW,
+      h: gridH,
+      slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out },
+      mc: new Uint8Array(gridW * gridH).fill(0),
+      out: new Uint8Array(gridW * gridH).fill(0),
+      cheat: sp.pixels,
+      lastLayer: "mc",
+      lastNonCheatLayer: "mc",
+    };
+    sprites.push(sp);
     activeSpriteId = id;
+    setC64Layer("mc", { resetHistory: true });
   }
 
   function addSprite() {
@@ -2164,8 +2909,19 @@
     const name = `Sprite ${sprites.length + 1}`;
     const w = gridW;
     const h = gridH;
-    const p = new Uint8Array(w * h).fill(TRANSPARENT);
-    sprites.push({ id, name, w, h, pixels: p });
+    const cheat = new Uint8Array(w * h).fill(TRANSPARENT);
+    const sp = { id, name, w, h, pixels: cheat };
+    sp.c64 = {
+      w,
+      h,
+      slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out },
+      mc: new Uint8Array(w * h).fill(0),
+      out: new Uint8Array(w * h).fill(0),
+      cheat,
+      lastLayer: "mc",
+      lastNonCheatLayer: "mc",
+    };
+    sprites.push(sp);
     scheduleSave();
     setActiveSprite(id);
   }
@@ -2175,7 +2931,21 @@
     if (!sp) return;
     const nextId = makeId("sprite");
     const name = `${sp.name} copy`;
-    sprites.push({ id: nextId, name, w: sp.w, h: sp.h, pixels: sp.pixels.slice() });
+    const dup = { id: nextId, name, w: sp.w, h: sp.h, pixels: sp.pixels.slice() };
+    if (sp.c64) {
+      const c64 = ensureC64Layers(sp);
+      dup.c64 = {
+        w: sp.w,
+        h: sp.h,
+        slots: { ...c64.slots },
+        mc: c64.mc.slice(),
+        out: c64.out.slice(),
+        cheat: c64.cheat.slice(),
+        lastLayer: c64.lastLayer || "mc",
+        lastNonCheatLayer: c64.lastNonCheatLayer || "mc",
+      };
+    }
+    sprites.push(dup);
     scheduleSave();
     setActiveSprite(nextId);
   }
@@ -2203,7 +2973,6 @@
     activeSpriteId = sp.id;
     gridW = sp.w;
     gridH = sp.h;
-    pixels = sp.pixels;
     if (gridW % SPRITE_W === 0 && gridH % SPRITE_H === 0) {
       customRes = false;
       customResEl.checked = false;
@@ -2221,10 +2990,11 @@
     }
     syncResUi();
     resizeCanvasOnly();
-    resetHistory();
+    ensureC64Layers(sp);
+    syncSlotsFromSpriteIfNeeded();
+    setC64Layer(sp.c64?.lastLayer || "mc", { resetHistory: true });
     renderSprites();
     scheduleSave();
-    render();
   }
 
   function syncActiveSpriteFromCanvas() {
@@ -2232,7 +3002,14 @@
     if (!sp) return;
     sp.w = gridW;
     sp.h = gridH;
-    sp.pixels = pixels;
+    const layer = getEditLayer();
+    const c64 = ensureC64Layers(sp);
+    c64.w = gridW;
+    c64.h = gridH;
+    if (layer === "mc") c64.mc = pixels;
+    else if (layer === "out") c64.out = pixels;
+    else c64.cheat = pixels;
+    sp.pixels = c64.cheat;
     renderSprites();
     scheduleSave();
   }
@@ -2240,7 +3017,12 @@
   function renderSprites() {
     if (!spriteListEl) return;
     spriteListEl.innerHTML = "";
-    if (sprites.length === 0) return;
+    if (sprites.length === 0) {
+      spriteInspectorEl.hidden = true;
+      return;
+    }
+
+    renderSpriteInspector();
 
     for (const sp of sprites) {
       const item = document.createElement("button");
@@ -2248,7 +3030,6 @@
       item.className = "libItem";
       item.title = "Kliknij, aby edytować";
       item.setAttribute("aria-pressed", sp.id === activeSpriteId ? "true" : "false");
-      if (sp.id === activeSpriteId) item.classList.add("libItem--active");
       item.addEventListener("click", () => {
         setActiveSprite(sp.id);
       });
@@ -2258,100 +3039,138 @@
       const c = document.createElement("canvas");
       c.width = sp.w;
       c.height = sp.h;
-      drawThumb(c, { w: sp.w, h: sp.h, data: sp.pixels });
+      drawThumb(c, { w: sp.w, h: sp.h, data: compositeSpritePixels(sp) });
       thumb.appendChild(c);
 
       const row = document.createElement("div");
       row.className = "libRow";
-      let meta = null;
-      if (sp.id === activeSpriteId) {
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "libNameInput";
-        input.value = sp.name;
-        input.maxLength = 40;
-        input.title = "Zmień nazwę aktywnego sprite";
-        input.addEventListener("click", (e) => e.stopPropagation());
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") input.blur();
-          e.stopPropagation();
-        });
-        input.addEventListener("input", () => {
-          sp.name = (input.value || "").trim() || "Sprite";
-          scheduleSave();
-        });
-        input.addEventListener("blur", () => {
-          sp.name = (input.value || "").trim() || "Sprite";
-          scheduleSave();
-          renderSprites();
-        });
-        meta = input;
-      } else {
-        const div = document.createElement("div");
-        div.className = "libMeta";
-        div.textContent = sp.name;
-        meta = div;
-      }
-
-      row.appendChild(meta);
-      if (sp.id === activeSpriteId) {
-        const actions = document.createElement("div");
-        actions.className = "libActions";
-
-        const toSwatch = document.createElement("button");
-        toSwatch.type = "button";
-        toSwatch.className = "iconBtn";
-        toSwatch.title = "-> Swatch";
-        toSwatch.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          addToLibrary({ w: sp.w, h: sp.h, data: sp.pixels.slice() });
-        });
-        toSwatch.innerHTML =
-          '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 7h14v14H7V7z"/><path fill="currentColor" d="M3 3h14v2H5v12H3V3z"/></svg>';
-
-        const dup = document.createElement("button");
-        dup.type = "button";
-        dup.className = "iconBtn";
-        dup.title = "Duplicate";
-        dup.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          duplicateSprite(sp.id);
-        });
-        dup.innerHTML =
-          '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16h-9V7h9v14z"/></svg>';
-
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "iconBtn";
-        del.title = "Delete (Shift: bez potwierdzenia)";
-        del.addEventListener("click", async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!e.shiftKey) {
-            const msg = lang === "pl" ? `Usunąć ${sp.name}?` : `${t("delete_confirm")} ${sp.name}?`;
-            const ok = await askConfirm(msg, {
-              title: t("delete_sprite_title"),
-              okText: t("delete_ok"),
-            });
-            if (!ok) return;
-          }
-          removeSprite(sp.id);
-        });
-        del.innerHTML =
-          '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z"/></svg>';
-
-        actions.appendChild(toSwatch);
-        actions.appendChild(dup);
-        actions.appendChild(del);
-        row.appendChild(actions);
-      }
+      const div = document.createElement("div");
+      div.className = "libMeta";
+      div.textContent = sp.name;
+      row.appendChild(div);
 
       item.appendChild(thumb);
       item.appendChild(row);
       spriteListEl.appendChild(item);
     }
+  }
+
+  function layerPixelsForInspector(sp, kind) {
+    if (!sp) return new Uint8Array(0);
+    if (kind === "png") return sp.pixels;
+    const c64 = ensureC64Layers(sp);
+    const slots = c64?.slots || colorSlots;
+    const len = sp.w * sp.h;
+    const out = new Uint8Array(len).fill(TRANSPARENT);
+    if (kind === "mc") {
+      for (let i = 0; i < len; i++) {
+        const v = c64.mc[i] | 0;
+        if (v === 1) out[i] = clampInt(slots.mc1, 0, 15);
+        else if (v === 2) out[i] = clampInt(slots.mc2, 0, 15);
+        else if (v === 3) out[i] = clampInt(slots.fg, 0, 15);
+        else out[i] = TRANSPARENT;
+      }
+      return out;
+    }
+    if (kind === "out") {
+      for (let i = 0; i < len; i++) out[i] = c64.out[i] ? clampInt(slots.out, 0, 15) : TRANSPARENT;
+      return out;
+    }
+    // cheat
+    return c64.cheat;
+  }
+
+  function renderSpriteInspector() {
+    const sp = getActiveSprite();
+    if (!sp) {
+      spriteInspectorEl.hidden = true;
+      return;
+    }
+
+    spriteInspectorEl.hidden = false;
+    ensureSpriteVis(sp);
+
+    // Name.
+    if (spriteInspectorNameEl.value !== sp.name) spriteInspectorNameEl.value = sp.name;
+
+    // Preview.
+    spriteInspectorCanvas.width = sp.w;
+    spriteInspectorCanvas.height = sp.h;
+    drawThumb(spriteInspectorCanvas, { w: sp.w, h: sp.h, data: compositeSpritePixels(sp) });
+
+    // Layers list.
+    spriteInspectorLayersEl.innerHTML = "";
+    const editLayer = getEditLayer();
+
+    const addLayerRow = (kind, label, hint, enabled, visible, pressed) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "layerRowItem";
+      row.setAttribute("aria-pressed", pressed ? "true" : "false");
+      row.setAttribute("aria-disabled", enabled ? "false" : "true");
+      row.disabled = !enabled;
+
+      row.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (!enabled) return;
+        if (kind === "mc") setC64Layer("mc", { resetHistory: false });
+        else if (kind === "out") setC64Layer("out", { resetHistory: false });
+        else setC64Layer("cheat", { resetHistory: false });
+        scheduleSave();
+        renderSprites();
+        render();
+      });
+
+      const visBtn = document.createElement("button");
+      visBtn.type = "button";
+      visBtn.className = "iconBtn layerVisBtn";
+      visBtn.title = visible ? "Hide layer" : "Show layer";
+      visBtn.setAttribute("aria-pressed", visible ? "true" : "false");
+      visBtn.disabled = !enabled;
+      visBtn.innerHTML = visible
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5c5 0 9 5 9 7s-4 7-9 7-9-5-9-7 4-7 9-7zm0 2c-3.3 0-6.3 3.1-7 5 .7 1.9 3.7 5 7 5s6.3-3.1 7-5c-.7-1.9-3.7-5-7-5zm0 2.5A2.5 2.5 0 1 1 9.5 12 2.5 2.5 0 0 1 12 9.5z"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2 5.27L3.28 4l17 17-1.27 1.27-3.1-3.1A10.7 10.7 0 0 1 12 19c-5 0-9-5-9-7a12.9 12.9 0 0 1 3.1-4.5L2 5.27zm7.1 7.1A2.5 2.5 0 0 0 12 14.5c.4 0 .8-.1 1.1-.26l-4.0-4.0zm9.6 4.5L16.7 14a4.5 4.5 0 0 0-6.7-6.7L8.1 5.4A10.5 10.5 0 0 1 12 5c5 0 9 5 9 7 0 1.1-1.1 3-2.9 4.9z"/></svg>';
+      visBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!enabled) return;
+        const v = ensureSpriteVis(sp);
+        if (kind === "mc") v.mc = !v.mc;
+        else if (kind === "out") v.out = !v.out;
+        else v.cheat = !v.cheat;
+        scheduleSave();
+        renderSprites();
+        render();
+      });
+
+      const thumb = document.createElement("div");
+      thumb.className = "layerRowThumb";
+      const c = document.createElement("canvas");
+      c.width = sp.w;
+      c.height = sp.h;
+      drawThumb(c, { w: sp.w, h: sp.h, data: layerPixelsForInspector(sp, kind) });
+      thumb.appendChild(c);
+
+      const grow = document.createElement("div");
+      grow.className = "layerRowGrow";
+      const lab = document.createElement("div");
+      lab.className = "layerRowLabel";
+      lab.textContent = label;
+      const hi = document.createElement("div");
+      hi.className = "layerRowHint";
+      hi.textContent = hint;
+      grow.appendChild(lab);
+      grow.appendChild(hi);
+
+      row.appendChild(visBtn);
+      row.appendChild(thumb);
+      row.appendChild(grow);
+      spriteInspectorLayersEl.appendChild(row);
+    };
+
+    addLayerRow("mc", "MC", "Sprite 1 (multicolor)", true, sp.vis.mc, editLayer === "mc");
+    addLayerRow("out", "OUT", "Sprite 2 (outline)", true, sp.vis.out, editLayer === "out");
+    addLayerRow("cheat", "CHEAT", "Overlay (hires)", true, sp.vis.cheat, editLayer === "cheat");
   }
 
   function applyCollapseUi() {
@@ -2403,6 +3222,7 @@
         lang,
         activeSlot,
         colorSlots,
+        cheatColor,
         tool,
         zoom,
         bgColor,
@@ -2421,7 +3241,24 @@
         activeLibraryId,
         activeSpriteId,
       },
-      sprites: sprites.map((s) => ({ id: s.id, name: s.name, w: s.w, h: s.h, rle: encodeRle(s.pixels) })),
+      sprites: sprites.map((s) => ({
+        id: s.id,
+        name: s.name,
+        w: s.w,
+        h: s.h,
+        rle: encodeRle(s.pixels),
+        vis: s.vis,
+        c64: s.c64
+          ? {
+              slots: s.c64.slots,
+              mcRle: encodeRle(s.c64.mc),
+              outRle: encodeRle(s.c64.out),
+              cheatRle: encodeRle(s.c64.cheat),
+              lastLayer: s.c64.lastLayer,
+              lastNonCheatLayer: s.c64.lastNonCheatLayer,
+            }
+          : null,
+      })),
       swatches: library.map((x) => ({ id: x.id, w: x.w, h: x.h, rle: encodeRle(x.data) })),
     };
   }
@@ -2449,6 +3286,7 @@
       colorSlots.mc2 = clampInt(s.colorSlots.mc2, 0, 15);
       colorSlots.out = clampInt(s.colorSlots.out, 0, 15);
     }
+    cheatColor = clampInt(s.cheatColor ?? cheatColor, 0, 15);
     if (typeof s.tool === "string") tool = s.tool;
     zoom = clampInt(s.zoom, 4, 64);
     bgColor = typeof s.bgColor === "string" ? s.bgColor : bgColor;
@@ -2491,7 +3329,46 @@
         const w = clampInt(sp.w, 1, MAX_SIZE);
         const h = clampInt(sp.h, 1, MAX_SIZE);
         const pix = decodeRle(sp.rle, w * h);
-        sprites.push({ id: sp.id, name: sp.name || "Sprite", w, h, pixels: pix });
+        const sprite = { id: sp.id, name: sp.name || "Sprite", w, h, pixels: pix };
+        if (sp.vis && typeof sp.vis === "object") sprite.vis = { mc: sp.vis.mc !== false, out: sp.vis.out !== false, cheat: sp.vis.cheat !== false };
+        if (sp.c64 && typeof sp.c64 === "object") {
+          const slots = sp.c64.slots || {};
+          const mc = decodeRle(sp.c64.mcRle, w * h, 0);
+          const out = decodeRle(sp.c64.outRle, w * h, 0);
+          const cheat = decodeRle(sp.c64.cheatRle, w * h, TRANSPARENT);
+          for (let i = 0; i < mc.length; i++) mc[i] = clampInt(mc[i], 0, 3);
+          for (let i = 0; i < out.length; i++) out[i] = out[i] ? 1 : 0;
+          for (let i = 0; i < cheat.length; i++) cheat[i] = cheat[i] === TRANSPARENT ? TRANSPARENT : clampInt(cheat[i], 0, 15);
+          sprite.c64 = {
+            w,
+            h,
+            slots: {
+              fg: clampInt(slots.fg ?? colorSlots.fg, 0, 15),
+              mc1: clampInt(slots.mc1 ?? colorSlots.mc1, 0, 15),
+              mc2: clampInt(slots.mc2 ?? colorSlots.mc2, 0, 15),
+              out: clampInt(slots.out ?? colorSlots.out, 0, 15),
+            },
+            mc,
+            out,
+            cheat,
+            lastLayer: sp.c64.lastLayer || "mc",
+            lastNonCheatLayer: sp.c64.lastNonCheatLayer || "mc",
+          };
+          sprite.pixels = sprite.c64.cheat;
+        } else {
+          // Legacy project: treat old PNG pixels as CHEAT layer by default.
+          sprite.c64 = {
+            w,
+            h,
+            slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out },
+            mc: new Uint8Array(w * h).fill(0),
+            out: new Uint8Array(w * h).fill(0),
+            cheat: sprite.pixels,
+            lastLayer: "cheat",
+            lastNonCheatLayer: "mc",
+          };
+        }
+        sprites.push(sprite);
       }
     }
     if (sprites.length === 0) {
@@ -2570,6 +3447,8 @@
       node.textContent = t(k);
     }
     renderHotkeys();
+    if (ioOpen) renderIO();
+    syncModeUi();
     syncLsInfo();
     maybeTranslateDefaultProjectName();
     renderLibrary();
@@ -2618,7 +3497,17 @@
     };
 
     keysContent.innerHTML = [
-      section("hk_colors", [["1–4", t("hk_colors_desc")]]),
+      section("hk_colors", [["1–5", t("hk_colors_desc")]]),
+      section("hk_layers", [
+        ["M", t("hk_layer_mc")],
+        ["O", t("hk_layer_out")],
+        ["H", t("hk_layer_cheat")],
+      ]),
+      section("hk_vis", [
+        ["Alt+M", t("hk_layer_mc")],
+        ["Alt+O", t("hk_layer_out")],
+        ["Alt+H", t("hk_layer_cheat")],
+      ]),
       section("hk_tools", [
         ["P", t("hk_pen")],
         ["E", t("hk_eraser")],
@@ -2637,7 +3526,6 @@
       ]),
       section("hk_view", [
         ["G", t("hk_grid")],
-        ["W", t("hk_wide")],
         ["S", t("hk_shape_fill")],
       ]),
       section("hk_transform", [
@@ -2652,6 +3540,277 @@
         ["Ctrl/Cmd+Wheel", t("hk_ctrl_wheel")],
       ]),
     ].join("");
+  }
+
+  // SpritePad (.spd) import/export (24×21 hardware sprites).
+  // We export each sprite as two SPD sprites: MC (multicolor) + OUT (hires overlay).
+  // Cheat layer is not part of SPD; it is ignored on export and kept transparent on import.
+  const SPD_W = 24;
+  const SPD_H = 21;
+  const SPD_BITMAP_BYTES = 63;
+  const SPD_SPRITE_BYTES = 64; // 63 bitmap + 1 attr
+  const SPD_HEADER_BYTES = 9;
+
+  function encodeSpdHiresBitmap(mask, w, ox, oy) {
+    const out = new Uint8Array(SPD_BITMAP_BYTES);
+    for (let y = 0; y < SPD_H; y++) {
+      const rowOff = (oy + y) * w + ox;
+      const dstOff = y * 3;
+      for (let bx = 0; bx < 3; bx++) {
+        let b = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = bx * 8 + bit;
+          if (mask[rowOff + x]) b |= 1 << (7 - bit);
+        }
+        out[dstOff + bx] = b;
+      }
+    }
+    return out;
+  }
+
+  function encodeSpdMulticolorBitmap(mc, w, ox, oy) {
+    const out = new Uint8Array(SPD_BITMAP_BYTES);
+    for (let y = 0; y < SPD_H; y++) {
+      const rowOff = (oy + y) * w + ox;
+      const dstOff = y * 3;
+      const bits = new Uint8Array(24);
+      for (let g = 0; g < 12; g++) {
+        const x = g * 2;
+        const v = clampInt(mc[rowOff + x] | 0, 0, 3);
+        bits[x] = (v >> 1) & 1;
+        bits[x + 1] = v & 1;
+      }
+      for (let bx = 0; bx < 3; bx++) {
+        let b = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = bx * 8 + bit;
+          if (bits[x]) b |= 1 << (7 - bit);
+        }
+        out[dstOff + bx] = b;
+      }
+    }
+    return out;
+  }
+
+  function decodeSpdHiresBitmap(bytes63) {
+    const out = new Uint8Array(SPD_W * SPD_H);
+    for (let y = 0; y < SPD_H; y++) {
+      const srcOff = y * 3;
+      const dstOff = y * SPD_W;
+      for (let bx = 0; bx < 3; bx++) {
+        const b = bytes63[srcOff + bx] | 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = bx * 8 + bit;
+          out[dstOff + x] = (b >> (7 - bit)) & 1 ? 1 : 0;
+        }
+      }
+    }
+    return out;
+  }
+
+  function decodeSpdMulticolorBitmap(bytes63) {
+    const out = new Uint8Array(SPD_W * SPD_H);
+    const rowBits = new Uint8Array(24);
+    for (let y = 0; y < SPD_H; y++) {
+      const srcOff = y * 3;
+      const dstOff = y * SPD_W;
+      for (let bx = 0; bx < 3; bx++) {
+        const b = bytes63[srcOff + bx] | 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = bx * 8 + bit;
+          rowBits[x] = (b >> (7 - bit)) & 1 ? 1 : 0;
+        }
+      }
+      for (let g = 0; g < 12; g++) {
+        const msb = rowBits[g * 2] | 0;
+        const lsb = rowBits[g * 2 + 1] | 0;
+        const v = (msb << 1) | lsb; // 0..3
+        const x = g * 2;
+        out[dstOff + x] = v;
+        out[dstOff + x + 1] = v;
+      }
+    }
+    return out;
+  }
+
+  function spriteTilesForSpd(sp) {
+    if (!sp) return [];
+    const w = clampInt(sp.w, 1, MAX_SIZE);
+    const h = clampInt(sp.h, 1, MAX_SIZE);
+    if (w % SPD_W !== 0 || h % SPD_H !== 0) return [];
+    const tiles = [];
+    const tx = (w / SPD_W) | 0;
+    const ty = (h / SPD_H) | 0;
+    for (let y = 0; y < ty; y++) for (let x = 0; x < tx; x++) tiles.push({ ox: x * SPD_W, oy: y * SPD_H });
+    return tiles;
+  }
+
+  async function exportSpritePadSpd() {
+    if (sprites.length === 0) return;
+    const blocks = [];
+    const skipped = [];
+    for (const sp of sprites) {
+      const tiles = spriteTilesForSpd(sp);
+      if (tiles.length === 0) {
+        skipped.push(`${sp.name} (${sp.w}x${sp.h})`);
+        continue;
+      }
+      const c64 = ensureC64Layers(sp);
+      const slots = c64?.slots || colorSlots;
+      for (const tile of tiles) blocks.push({ sp, c64, slots, ...tile });
+    }
+    if (blocks.length === 0) {
+      alert("Brak sprite’ów 24×21 (lub wielokrotności) do eksportu SpritePad (.spd).");
+      return;
+    }
+
+    const maxSpdSprites = 256;
+    const maxBlocks = Math.floor(maxSpdSprites / 2);
+    const clipped = blocks.length > maxBlocks;
+    const useBlocks = clipped ? blocks.slice(0, maxBlocks) : blocks;
+
+    const numSprites = useBlocks.length * 2;
+    const numAnims = 1;
+    const totalBytes = SPD_HEADER_BYTES + numSprites * SPD_SPRITE_BYTES + numAnims * 4;
+    const out = new Uint8Array(totalBytes);
+
+    out[0] = "S".charCodeAt(0);
+    out[1] = "P".charCodeAt(0);
+    out[2] = "D".charCodeAt(0);
+    out[3] = 2; // version (SpritePad 2.x)
+    out[4] = (numSprites - 1) & 0xff;
+    out[5] = (numAnims - 1) & 0xff;
+    out[6] = 0; // bg (display-only)
+    out[7] = clampInt(colorSlots.mc1, 0, 15);
+    out[8] = clampInt(colorSlots.mc2, 0, 15);
+
+    let p = SPD_HEADER_BYTES;
+    for (const b of useBlocks) {
+      const mcBytes = encodeSpdMulticolorBitmap(b.c64.mc, b.sp.w, b.ox, b.oy);
+      out.set(mcBytes, p);
+      out[p + SPD_BITMAP_BYTES] = (clampInt(b.slots.fg, 0, 15) & 0x0f) | 0x80; // multicolor
+      p += SPD_SPRITE_BYTES;
+
+      const outBytes = encodeSpdHiresBitmap(b.c64.out, b.sp.w, b.ox, b.oy);
+      out.set(outBytes, p);
+      out[p + SPD_BITMAP_BYTES] = (clampInt(b.slots.out, 0, 15) & 0x0f) | 0x10; // overlay
+      p += SPD_SPRITE_BYTES;
+    }
+
+    const animOff = SPD_HEADER_BYTES + numSprites * SPD_SPRITE_BYTES;
+    out[animOff + 0] = 0; // start
+    out[animOff + 1] = Math.max(0, numSprites - 1) & 0xff; // end
+    out[animOff + 2] = 6; // timer (arbitrary)
+    out[animOff + 3] = 0; // flags
+
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}_${pad2(now.getHours())}${pad2(
+      now.getMinutes(),
+    )}${pad2(now.getSeconds())}`;
+    const blob = new Blob([out], { type: "application/octet-stream" });
+    downloadBlob(blob, `jurased_spritepad_${numSprites}sprites_${stamp}.spd`);
+
+    if (skipped.length || clipped) {
+      const msg = [
+        clipped ? `Uwaga: eksport ograniczony do ${maxBlocks} bloków (256 sprite’ów SpritePad).` : null,
+        skipped.length ? `Pominięte (nie 24×21 / wielokrotność):\n- ${skipped.join("\n- ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      if (msg) console.warn("[JurasEd] SPD export:", msg);
+    }
+  }
+
+  async function importSpritePadSpd(file) {
+    let bytes;
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch {
+      alert("Nie udało się wczytać pliku .spd.");
+      return;
+    }
+    if (bytes.length < SPD_HEADER_BYTES) {
+      alert("Nieprawidłowy plik .spd.");
+      return;
+    }
+    const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2]);
+    if (sig !== "SPD") {
+      alert("To nie wygląda na plik SpritePad (.spd).");
+      return;
+    }
+    const version = bytes[3] | 0;
+    const numSprites = (bytes[4] | 0) + 1;
+    const numAnims = (bytes[5] | 0) + 1;
+    const mc1 = clampInt(bytes[7] | 0, 0, 15);
+    const mc2 = clampInt(bytes[8] | 0, 0, 15);
+    const needed = SPD_HEADER_BYTES + numSprites * SPD_SPRITE_BYTES + numAnims * 4;
+    if (bytes.length < needed) {
+      alert("Plik .spd jest ucięty lub nieprawidłowy.");
+      return;
+    }
+    if (version !== 2 && version !== 1 && version !== 3) {
+      console.warn("[JurasEd] SPD: unknown version:", version);
+    }
+
+    colorSlots.mc1 = mc1;
+    colorSlots.mc2 = mc2;
+    syncSlotUi();
+    syncPaletteSelection();
+
+    const imported = [];
+    let pendingBase = null;
+    for (let i = 0; i < numSprites; i++) {
+      const off = SPD_HEADER_BYTES + i * SPD_SPRITE_BYTES;
+      const bmp = bytes.slice(off, off + SPD_BITMAP_BYTES);
+      const attr = bytes[off + SPD_BITMAP_BYTES] | 0;
+      const colorNib = attr & 0x0f;
+      const isOverlay = (attr & 0x10) !== 0;
+      const isMulti = (attr & 0x80) !== 0;
+
+      if (isOverlay && pendingBase) {
+        const mask = decodeSpdHiresBitmap(bmp);
+        const c64 = ensureC64Layers(pendingBase);
+        c64.out.set(mask);
+        c64.slots.out = clampInt(colorNib, 0, 15);
+        pendingBase = null;
+        continue;
+      }
+
+      const id = makeId("sprite");
+      const name = `Sprite ${sprites.length + imported.length + 1}`;
+      const w = SPD_W;
+      const h = SPD_H;
+      const cheat = new Uint8Array(w * h).fill(TRANSPARENT);
+      const sp = { id, name, w, h, pixels: cheat };
+      sp.c64 = {
+        w,
+        h,
+        slots: { fg: clampInt(colorSlots.fg, 0, 15), mc1, mc2, out: clampInt(colorSlots.out, 0, 15) },
+        mc: new Uint8Array(w * h).fill(0),
+        out: new Uint8Array(w * h).fill(0),
+        cheat,
+        lastLayer: "mc",
+        lastNonCheatLayer: "mc",
+      };
+      sp.vis = { mc: true, out: true, cheat: false };
+
+      if (isMulti) {
+        sp.c64.mc = decodeSpdMulticolorBitmap(bmp);
+        sp.c64.slots.fg = clampInt(colorNib, 0, 15);
+      } else {
+        sp.c64.out = decodeSpdHiresBitmap(bmp);
+        sp.c64.slots.out = clampInt(colorNib, 0, 15);
+      }
+
+      sprites.push(sp);
+      imported.push(sp);
+      pendingBase = sp;
+    }
+
+    if (imported.length) {
+      setActiveSprite(imported[0].id);
+      saveState();
+    }
   }
 
   function exportProject() {
@@ -2678,7 +3837,19 @@
     const data = imageToC64Pixels(img, w, h);
     const id = makeId("sprite");
     const name = `Sprite ${sprites.length + 1}`;
-    sprites.push({ id, name, w, h, pixels: data });
+    const cheat = data;
+    const sp = { id, name, w, h, pixels: cheat };
+    sp.c64 = {
+      w,
+      h,
+      slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out },
+      mc: new Uint8Array(w * h).fill(0),
+      out: new Uint8Array(w * h).fill(0),
+      cheat,
+      lastLayer: "cheat",
+      lastNonCheatLayer: "mc",
+    };
+    sprites.push(sp);
     setActiveSprite(id);
     saveState();
   }
@@ -2695,7 +3866,8 @@
   async function exportActiveSpritePng() {
     const sp = sprites.find((s) => s.id === activeSpriteId);
     if (!sp) return;
-    const blob = await pixelsToPngBlob(sp.pixels, sp.w, sp.h);
+    const view = compositeSpritePixels(sp);
+    const blob = await pixelsToPngBlob(view, sp.w, sp.h);
     downloadBlob(blob, `${sp.name.replaceAll(" ", "_")}.png`);
   }
 
@@ -2727,9 +3899,10 @@
       const ox = col * cellW;
       const oy = row * cellH;
 
+      const view = compositeSpritePixels(sp);
       for (let y = 0; y < sp.h; y++) {
         for (let x = 0; x < sp.w; x++) {
-          const p = sp.pixels[y * sp.w + x];
+          const p = view[y * sp.w + x];
           if (p === TRANSPARENT) continue;
           const idx = (oy + y) * sheetW + (ox + x);
           const j = idx * 4;
@@ -2930,6 +4103,7 @@
     btnTheme.title = `Theme: ${next}`;
     setEvilEnabled(next === "dark-hell" || next === "dark-candles");
     updateEvilCursorVisibility(true);
+    syncThumbBgVar();
   }
 
   function setEvilEnabled(enabled) {
@@ -3373,8 +4547,8 @@
     return out;
   }
 
-  function decodeRle(rle, len) {
-    const out = new Uint8Array(len).fill(TRANSPARENT);
+  function decodeRle(rle, len, fill = TRANSPARENT) {
+    const out = new Uint8Array(len).fill(fill);
     if (!Array.isArray(rle)) return out;
     let o = 0;
     for (let i = 0; i + 1 < rle.length; i += 2) {
@@ -3405,6 +4579,8 @@
         return "MC2";
       case "out":
         return "OUT";
+      case "cheat":
+        return "CH";
       default:
         return s;
     }
