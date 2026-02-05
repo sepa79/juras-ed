@@ -4325,17 +4325,53 @@
       return;
     }
     const version = bytes[3] | 0;
-    const numSprites = (bytes[4] | 0) + 1;
-    const numAnims = (bytes[5] | 0) + 1;
-    const mc1 = clampInt(bytes[7] | 0, 0, 15);
-    const mc2 = clampInt(bytes[8] | 0, 0, 15);
-    const needed = SPD_HEADER_BYTES + numSprites * SPD_SPRITE_BYTES + numAnims * 4;
-    if (bytes.length < needed) {
-      await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
+
+    // SpritePad versions differ in header layout.
+    // - v1..v3: 9-byte header, (numSprites-1) at [4], (numAnims-1) at [5], mc1 at [7], mc2 at [8].
+    // - v5: 20-byte header, uint16 numSprites at [5..6], global colors at [13..15].
+    let headerBytes = SPD_HEADER_BYTES;
+    let numSprites = 0;
+    let mc1 = clampInt(colorSlots.mc1, 0, 15);
+    let mc2 = clampInt(colorSlots.mc2, 0, 15);
+    let bg = 0;
+    let hasV5OverlayPairs = false;
+
+    if (version === 5) {
+      headerBytes = 20;
+      if (bytes.length < headerBytes) {
+        await showAlert("Nieprawidłowy plik .spd.", { title: "SpritePad" });
+        return;
+      }
+      numSprites = (bytes[5] | 0) | ((bytes[6] | 0) << 8);
+      bg = clampInt(bytes[13] | 0, 0, 15);
+      mc1 = clampInt(bytes[14] | 0, 0, 15);
+      mc2 = clampInt(bytes[15] | 0, 0, 15);
+      // In v5, bit 0x10 seems to mean \"has overlay\" on the multicolor base sprite (next sprite is the hires overlay),
+      // not \"this sprite is an overlay\" (as in v2).
+      hasV5OverlayPairs = true;
+    } else {
+      numSprites = (bytes[4] | 0) + 1;
+      const numAnims = (bytes[5] | 0) + 1;
+      mc1 = clampInt(bytes[7] | 0, 0, 15);
+      mc2 = clampInt(bytes[8] | 0, 0, 15);
+      const needed = SPD_HEADER_BYTES + numSprites * SPD_SPRITE_BYTES + numAnims * 4;
+      if (bytes.length < needed) {
+        await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
+        return;
+      }
+      if (version !== 2 && version !== 1 && version !== 3) {
+        console.warn("[JurasEd] SPD: unknown version:", version);
+      }
+    }
+
+    if (!Number.isFinite(numSprites) || numSprites <= 0) {
+      await showAlert("Nieprawidłowy plik .spd (liczba sprite’ów).", { title: "SpritePad" });
       return;
     }
-    if (version !== 2 && version !== 1 && version !== 3) {
-      console.warn("[JurasEd] SPD: unknown version:", version);
+    const neededSpritesOnly = headerBytes + numSprites * SPD_SPRITE_BYTES;
+    if (bytes.length < neededSpritesOnly) {
+      await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
+      return;
     }
 
     colorSlots.mc1 = mc1;
@@ -4345,15 +4381,19 @@
 
     const imported = [];
     let pendingBase = null;
+
     for (let i = 0; i < numSprites; i++) {
-      const off = SPD_HEADER_BYTES + i * SPD_SPRITE_BYTES;
+      const off = headerBytes + i * SPD_SPRITE_BYTES;
       const bmp = bytes.slice(off, off + SPD_BITMAP_BYTES);
       const attr = bytes[off + SPD_BITMAP_BYTES] | 0;
       const colorNib = attr & 0x0f;
-      const isOverlay = (attr & 0x10) !== 0;
+      const hasOverlay = (attr & 0x10) !== 0;
       const isMulti = (attr & 0x80) !== 0;
 
-      if (isOverlay && pendingBase) {
+      // v1..v3 overlay sprites: attr has 0x10 and carries overlay color.
+      const isOverlaySprite = !hasV5OverlayPairs && hasOverlay;
+
+      if (isOverlaySprite && pendingBase) {
         const mask = decodeSpdHiresBitmap(bmp);
         const c64 = ensureC64Layers(pendingBase);
         c64.out.set(mask);
@@ -4383,6 +4423,17 @@
       if (isMulti) {
         sp.c64.mc = decodeSpdMulticolorBitmap(bmp);
         sp.c64.slots.fg = clampInt(colorNib, 0, 15);
+
+        // v5 overlay pairs: next sprite contains the hires overlay bitmap (color often 0).
+        if (hasV5OverlayPairs && hasOverlay && i + 1 < numSprites) {
+          const off2 = headerBytes + (i + 1) * SPD_SPRITE_BYTES;
+          const bmp2 = bytes.slice(off2, off2 + SPD_BITMAP_BYTES);
+          const attr2 = bytes[off2 + SPD_BITMAP_BYTES] | 0;
+          const mask = decodeSpdHiresBitmap(bmp2);
+          sp.c64.out.set(mask);
+          sp.c64.slots.out = clampInt(attr2 & 0x0f, 0, 15);
+          i++; // skip the overlay entry
+        }
       } else {
         sp.c64.out = decodeSpdHiresBitmap(bmp);
         sp.c64.slots.out = clampInt(colorNib, 0, 15);
