@@ -849,6 +849,19 @@
       io_sprite_png_import: "PNG → sprite",
       io_swatch_png_import: "PNG → swatch",
       io_spritesheet_png: "Spritesheet (PNG)",
+      spd_export_empty: "Brak sprite’ów 24×21 (lub wielokrotności) do eksportu SpritePad (.spd).",
+      spd_read_fail: "Nie udało się wczytać pliku .spd.",
+      spd_invalid: "Nieprawidłowy plik .spd.",
+      spd_not_spritepad: "To nie wygląda na plik SpritePad (.spd).",
+      spd_truncated: "Plik .spd jest ucięty lub nieprawidłowy.",
+      spd_invalid_count: "Nieprawidłowy plik .spd (liczba sprite’ów).",
+      spd_no_nonempty: "Plik .spd nie zawiera niepustych sprite’ów.",
+      koala_export_need_mc: "Koala eksport: wybierz obrazek MC (320×200).",
+      koala_export_need_320: "Koala eksport: wymagane 320×200, a tu jest {w}×{h}.",
+      koala_read_fail: "Nie udało się wczytać pliku Koala (.koa/.kla).",
+      koala_not_koala: "To nie wygląda na plik Koala (.koa/.kla).",
+      project_invalid: "Nieprawidłowy plik projektu.",
+      project_import_fail: "Nie udało się zaimportować projektu.",
       save_now: "Zapisz teraz",
       clear_saved: "Wyczyść zapis",
       ls_tip: "Tip: Export/Import na górnym pasku to backup projektu jako plik JSON.",
@@ -954,6 +967,19 @@
       io_sprite_png_import: "PNG → sprite",
       io_swatch_png_import: "PNG → swatch",
       io_spritesheet_png: "Spritesheet (PNG)",
+      spd_export_empty: "No 24×21 sprites (or multiples) to export to SpritePad (.spd).",
+      spd_read_fail: "Failed to read the .spd file.",
+      spd_invalid: "Invalid .spd file.",
+      spd_not_spritepad: "This doesn't look like a SpritePad (.spd) file.",
+      spd_truncated: "The .spd file is truncated or invalid.",
+      spd_invalid_count: "Invalid .spd file (sprite count).",
+      spd_no_nonempty: "The .spd file contains no non-empty sprites.",
+      koala_export_need_mc: "Koala export: select a MC image (320×200).",
+      koala_export_need_320: "Koala export: 320×200 required, but this is {w}×{h}.",
+      koala_read_fail: "Failed to read the Koala (.koa/.kla) file.",
+      koala_not_koala: "This doesn't look like a Koala (.koa/.kla) file.",
+      project_invalid: "Invalid project file.",
+      project_import_fail: "Failed to import the project.",
       save_now: "Save now",
       clear_saved: "Clear saved",
       ls_tip: "Tip: Export/Import in the top bar is a JSON backup.",
@@ -1031,6 +1057,11 @@
   };
 
   const t = (key) => I18N[lang]?.[key] ?? I18N.en[key] ?? key;
+  const tf = (key, vars = {}) => {
+    let s = t(key);
+    for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v));
+    return s;
+  };
 
   buildPalette();
   syncSlotUi();
@@ -4259,7 +4290,7 @@
       for (const tile of tiles) blocks.push({ sp, c64, slots, ...tile });
     }
     if (blocks.length === 0) {
-      await showAlert("Brak sprite’ów 24×21 (lub wielokrotności) do eksportu SpritePad (.spd).", { title: "SpritePad" });
+      await showAlert(t("spd_export_empty"), { title: "SpritePad" });
       return;
     }
 
@@ -4325,16 +4356,17 @@
     try {
       bytes = new Uint8Array(await file.arrayBuffer());
     } catch {
-      await showAlert("Nie udało się wczytać pliku .spd.", { title: "SpritePad" });
+      await showAlert(t("spd_read_fail"), { title: "SpritePad" });
       return;
     }
     if (bytes.length < SPD_HEADER_BYTES) {
-      await showAlert("Nieprawidłowy plik .spd.", { title: "SpritePad" });
+      await showAlert(t("spd_invalid"), { title: "SpritePad" });
       return;
     }
     const sig = String.fromCharCode(bytes[0], bytes[1], bytes[2]);
     if (sig !== "SPD") {
-      await showAlert("To nie wygląda na plik SpritePad (.spd).", { title: "SpritePad" });
+      const ok = await tryImportSpritePadRaw(bytes, file.name);
+      if (!ok) await showAlert(t("spd_not_spritepad"), { title: "SpritePad" });
       return;
     }
     const version = bytes[3] | 0;
@@ -4356,7 +4388,7 @@
     if (version === 5) {
       headerBytes = 20;
       if (bytes.length < headerBytes) {
-        await showAlert("Nieprawidłowy plik .spd.", { title: "SpritePad" });
+        await showAlert(t("spd_invalid"), { title: "SpritePad" });
         return;
       }
       declaredNumSprites = (bytes[5] | 0) | ((bytes[6] | 0) << 8);
@@ -4374,8 +4406,8 @@
       mc1 = clampInt(bytes[7] | 0, 0, 15);
       mc2 = clampInt(bytes[8] | 0, 0, 15);
       const needed = 0; // legacy guard (we clip via maxByLen below)
-      if (bytes.length < needed) {
-        await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
+      if (false && bytes.length < needed) {
+        await showAlert(t("spd_truncated"), { title: "SpritePad" });
         return;
       }
       if (version !== 2 && version !== 1 && version !== 3) {
@@ -4384,12 +4416,12 @@
     }
 
     if (!Number.isFinite(numSprites) || numSprites <= 0) {
-      await showAlert("Nieprawidłowy plik .spd (liczba sprite’ów).", { title: "SpritePad" });
+      await showAlert(t("spd_invalid_count"), { title: "SpritePad" });
       return;
     }
     const neededSpritesOnly = 0; // legacy guard (we clip via maxByLen below)
-    if (bytes.length < neededSpritesOnly) {
-      await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
+    if (false && bytes.length < neededSpritesOnly) {
+      await showAlert(t("spd_truncated"), { title: "SpritePad" });
       return;
     }
 
@@ -4397,7 +4429,7 @@
     const bytesForSprites = Math.max(0, bytes.length - headerBytes - (version === 5 ? 0 : Math.max(0, numAnims * 4)));
     maxByLen = Math.floor(bytesForSprites / SPD_SPRITE_BYTES);
     if (!Number.isFinite(maxByLen) || maxByLen <= 0) {
-      await showAlert("Plik .spd jest ucięty lub nieprawidłowy.", { title: "SpritePad" });
+      await showAlert(t("spd_truncated"), { title: "SpritePad" });
       return;
     }
     if (numSprites > maxByLen) {
@@ -4420,7 +4452,7 @@
       }
     }
     if (lastNonEmpty < 0) {
-      await showAlert("Plik .spd nie zawiera niepustych sprite'ow.", { title: "SpritePad" });
+      await showAlert(t("spd_no_nonempty"), { title: "SpritePad" });
       return;
     }
     // If the last non-empty entry is a v5 base sprite with an overlay-next marker, keep its overlay too.
@@ -4514,6 +4546,95 @@
     }
   }
 
+  async function tryImportSpritePadRaw(bytes, filename) {
+    // Some SpritePad exports (or very old variants) are PRG-like: 2-byte load address + 63*N bytes sprites
+    // with a few trailing metadata bytes (often colors). We try to detect and import those too.
+    if (!bytes || bytes.length < 2 + SPD_BITMAP_BYTES) return false;
+
+    const body = bytes.slice(2); // skip load address ($xxxx)
+    let tailLen = -1;
+    for (let t = 0; t <= 4; t++) {
+      const payload = body.length - t;
+      if (payload <= 0) continue;
+      if (payload % SPD_BITMAP_BYTES === 0) {
+        tailLen = t;
+        break;
+      }
+    }
+    if (tailLen < 0) return false;
+
+    const payloadLen = body.length - tailLen;
+    const numSprites = Math.floor(payloadLen / SPD_BITMAP_BYTES);
+    if (!Number.isFinite(numSprites) || numSprites <= 0) return false;
+
+    const payload = body.slice(0, payloadLen);
+    const tail = tailLen ? body.slice(payloadLen) : new Uint8Array(0);
+    const tailColor = tailLen ? clampInt(tail[tailLen - 1] & 0x0f, 0, 15) : null;
+
+    const isEmptySpriteAt = (i) => {
+      const off = i * SPD_BITMAP_BYTES;
+      for (let k = 0; k < SPD_BITMAP_BYTES; k++) if (payload[off + k]) return false;
+      return true;
+    };
+
+    // Trim trailing empty sprites.
+    let lastNonEmpty = -1;
+    for (let i = numSprites - 1; i >= 0; i--) {
+      if (!isEmptySpriteAt(i)) {
+        lastNonEmpty = i;
+        break;
+      }
+    }
+    if (lastNonEmpty < 0) {
+      await showAlert(t("spd_no_nonempty"), { title: "SpritePad" });
+      return true;
+    }
+    const trimmedSprites = lastNonEmpty + 1;
+
+    const imported = [];
+    for (let i = 0; i < trimmedSprites; i++) {
+      const bmp = payload.slice(i * SPD_BITMAP_BYTES, (i + 1) * SPD_BITMAP_BYTES);
+      const id = makeId("sprite");
+      const name = `Sprite ${sprites.length + imported.length + 1}`;
+      const w = SPD_W;
+      const h = SPD_H;
+      const cheat = new Uint8Array(w * h).fill(TRANSPARENT);
+      const sp = { id, name, w, h, pixels: cheat };
+      sp.c64 = {
+        w,
+        h,
+        slots: {
+          fg: clampInt(colorSlots.fg, 0, 15),
+          mc1: clampInt(colorSlots.mc1, 0, 15),
+          mc2: clampInt(colorSlots.mc2, 0, 15),
+          out: tailColor != null ? tailColor : clampInt(colorSlots.out, 0, 15),
+        },
+        mc: new Uint8Array(w * h).fill(0),
+        out: decodeSpdHiresBitmap(bmp),
+        cheat,
+        lastLayer: "out",
+        lastNonCheatLayer: "out",
+      };
+      sp.vis = { mc: false, out: true, cheat: false };
+      sprites.push(sp);
+      imported.push(sp);
+    }
+
+    if (imported.length) {
+      setActiveSprite(imported[0].id);
+      saveState();
+      console.warn(
+        "[JurasEd] SPD raw/PRG import:",
+        filename,
+        `sprites=${trimmedSprites}/${numSprites}`,
+        tailLen ? `tailLen=${tailLen}` : "",
+        tailColor != null ? `color=${tailColor}` : "",
+      );
+      return true;
+    }
+    return false;
+  }
+
   function koalaOffsets(bytes) {
     // Koala Painter: typically 10003 bytes including 2-byte load address ($6000).
     // Layout (after optional load addr): bitmap 8000, screen 1000, color 1000, bg 1.
@@ -4535,11 +4656,11 @@
   async function exportKoala() {
     const sp = getActiveSprite();
     if (!sp || !isMcImage(sp)) {
-      await showAlert("Koala eksport: wybierz obrazek MC (320×200).", { title: "Koala" });
+      await showAlert(t("koala_export_need_mc"), { title: "Koala" });
       return;
     }
     if (sp.w !== 320 || sp.h !== 200) {
-      await showAlert(`Koala eksport: wymagane 320×200, a tu jest ${sp.w}×${sp.h}.`, { title: "Koala" });
+      await showAlert(tf("koala_export_need_320", { w: sp.w, h: sp.h }), { title: "Koala" });
       return;
     }
     const c64 = ensureMcImageCells(sp);
@@ -4586,12 +4707,12 @@
     try {
       bytes = new Uint8Array(await file.arrayBuffer());
     } catch {
-      await showAlert("Nie udało się wczytać pliku Koala (.koa/.kla).", { title: "Koala" });
+      await showAlert(t("koala_read_fail"), { title: "Koala" });
       return;
     }
     const off = koalaOffsets(bytes);
     if (!off) {
-      await showAlert("To nie wygląda na plik Koala (.koa/.kla).", { title: "Koala" });
+      await showAlert(t("koala_not_koala"), { title: "Koala" });
       return;
     }
 
@@ -4666,10 +4787,10 @@
       const text = await file.text();
       const state = JSON.parse(text);
       const ok = hydrateFromStateObject(state);
-      if (!ok) await showAlert("Nieprawidłowy plik projektu.", { title: "Projekt" });
+      if (!ok) await showAlert(t("project_invalid"), { title: "Project" });
       else saveState();
     } catch {
-      await showAlert("Nie udało się zaimportować projektu.", { title: "Projekt" });
+      await showAlert(t("project_import_fail"), { title: "Project" });
     }
   }
 
