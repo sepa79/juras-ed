@@ -43,7 +43,7 @@
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 18l5-5h-3V3h-4v10H7l5 5z"/></svg>
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
           </span>
-          <span class="ioText">I/O</span>
+          <span class="ioText">I/E</span>
         </button>
         <button id="btnSave" class="btn btn--primary" type="button" data-i18n="save_png">Zapisz PNG</button>
         <button id="btnHelp" class="btn" type="button" title="Pomoc" data-i18n="help">Pomoc</button>
@@ -288,7 +288,7 @@
       <aside class="panel panel--right" aria-label="Library">
         <section class="card">
           <div class="card__head">
-            <h2 class="card__title" data-i18n="sprites">Sprites</h2>
+            <h2 class="card__title" data-i18n="library">Library</h2>
             <button id="btnToggleSprites" class="iconBtn collapseBtn" type="button" aria-expanded="true" title="Collapse">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
             </button>
@@ -374,6 +374,7 @@
     <input id="fileSpd" type="file" accept=".spd,application/octet-stream" hidden />
     <input id="fileKoala" type="file" accept=".koa,.kla,application/octet-stream" hidden />
     <input id="fileSpritePng" type="file" accept="image/png" hidden />
+    <input id="fileImagePng" type="file" accept="image/png" hidden />
     <input id="fileSwatchPng" type="file" accept="image/png" hidden />
 
     <div id="ioModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="ioTitle">
@@ -467,7 +468,7 @@ To jest statyczna strona – nie wymaga serwera.
 - Stan edytora jest zapisywany w `localStorage`, więc odświeżenie (`F5`) nie powinno kasować pracy.
 - Import/Export:
   - `Export` / `Import` na górnym pasku zapisuje/ładuje projekt jako JSON.
-  - `Sprites -> Import PNG` dodaje PNG jako nowy sprite (kolory mapowane do palety C64, alpha < 128 = transparent).
+  - `Import PNG → sprite` dodaje PNG jako nowy sprite (kolory mapowane do palety C64, alpha < 128 = transparent).
   - `Zapisz PNG` na górnym pasku eksportuje cały spritesheet (wszystkie sprite’y) do jednego PNG.
 
 ## GitHub Pages
@@ -492,7 +493,7 @@ Repo ma workflow do Pages (`.github/workflows/pages.yml`).
   - Paste: przycisk **Paste** lub `Ctrl+V` (wkleja aktywny swatch; można wklejać wielokrotnie)
   - `Esc` anuluje paste i czyści zaznaczenie
 - **Swatches:** każdy `Ctrl+C` dodaje wycinek do panelu „Swatches” (po prawej). Kliknięcie miniatury ustawia aktywny bufor wklejania; można wklejać wielokrotnie. Przycisk `-> Sprite` tworzy nowy sprite z wycinka.
-- **Sprites:** panel „Sprites” (po prawej) pokazuje sprite’y. `+ Add` dodaje nowy, klik miniatury przełącza aktywną edycję, `Duplicate` robi kopię, kosz usuwa, `-> Swatch` dodaje sprite do swatchy (do wklejania).
+- **Biblioteka:** panel „Biblioteka” (po prawej) pokazuje sprite’y. `+ Add` dodaje nowy, klik miniatury przełącza aktywną edycję, `Duplicate` robi kopię, kosz usuwa, `-> Swatch` dodaje sprite do swatchy (do wklejania).
 - **Wypełniaj kształty:** checkbox „Wypełniaj kształty” (dotyczy prostokąta i koła).
 - **Siatka:** `G`
 - **Wide pixel:** `W`

@@ -102,6 +102,7 @@
   const fileSpd = el("fileSpd");
   const fileKoala = el("fileKoala");
   const fileSpritePng = el("fileSpritePng");
+  const fileImagePng = el("fileImagePng");
   const fileSwatchPng = el("fileSwatchPng");
   const ioModal = el("ioModal");
   const btnIoClose = el("btnIoClose");
@@ -176,21 +177,36 @@
   let activeSlot = "fg"; // fg|mc1|mc2|out|cheat
   let tool = "pen"; // pen|eraser|line|fill|rect|circle|select
 
-  let customRes = !!customResEl.checked;
-  let spritesX = clampInt(spritesXEl.value, 1, 8);
-  let spritesY = clampInt(spritesYEl.value, 1, 8);
-  let customW = clampInt(customWEl.value, 1, MAX_SIZE);
-  let customH = clampInt(customHEl.value, 1, MAX_SIZE);
+  // Defaults must be deterministic, even if the browser restores form control values
+  // (which can happen on reload / crash restore / file://).
+  let customRes = false;
+  let spritesX = 1;
+  let spritesY = 1;
+  let customW = SPRITE_W;
+  let customH = SPRITE_H;
 
-  let zoom = clampInt(zoomEl.value, 4, 64);
-  let bgColor = bgColorEl.value || "#203040";
-  let showGrid = !!showGridEl.checked;
-  let grid8 = !!grid8El.checked;
-  let widePixel = !!widePixelEl.checked;
-  let shapeFill = !!shapeFillEl.checked;
+  let zoom = 16;
+  let bgColor = "#203040";
+  let showGrid = true;
+  let grid8 = false;
+  let widePixel = false;
+  let shapeFill = false;
   let transformMode = false;
   let mirrorX = false;
   let mirrorY = false;
+
+  // Force UI controls to match defaults on initial load; loadState() may override later.
+  customResEl.checked = customRes;
+  spritesXEl.value = String(spritesX);
+  spritesYEl.value = String(spritesY);
+  customWEl.value = String(customW);
+  customHEl.value = String(customH);
+  zoomEl.value = String(zoom);
+  bgColorEl.value = bgColor;
+  showGridEl.checked = showGrid;
+  grid8El.checked = grid8;
+  widePixelEl.checked = widePixel;
+  shapeFillEl.checked = shapeFill;
 
   let gridW = 0;
   let gridH = 0;
@@ -820,6 +836,7 @@
   const I18N = {
     pl: {
       brand_subtitle: "Edytor C64 Sprite 'dla debili'.",
+      library: "Biblioteka",
       collection: "Kolekcja",
       palette_c64: "Paleta C64",
       palette_hint: "Wybierz slot (FG/MC1/MC2/OUT), potem kliknij kolor w palecie, żeby go przypisać.",
@@ -842,11 +859,17 @@
       io_title: "Import / Export",
       io_import: "Import",
       io_export: "Export",
+      io_group_project: "Projekt",
+      io_group_sprite: "Sprite",
+      io_group_image: "Obrazek",
+      io_group_swatch: "Swatch",
       io_project_json: "Projekt (JSON)",
       io_spritepad_spd: "SpritePad (.spd)",
       io_koala: "Koala (.koa/.kla)",
       io_sprite_png: "Aktywny sprite (PNG)",
       io_sprite_png_import: "PNG → sprite",
+      io_image_png: "Aktywny obrazek (PNG)",
+      io_image_png_import: "PNG → obrazek",
       io_swatch_png_import: "PNG → swatch",
       io_spritesheet_png: "Spritesheet (PNG)",
       spd_export_empty: "Brak sprite’ów 24×21 (lub wielokrotności) do eksportu SpritePad (.spd).",
@@ -938,6 +961,7 @@
     },
     en: {
       brand_subtitle: "C64 sprite editor for dummies.",
+      library: "Library",
       collection: "Collection",
       palette_c64: "C64 Palette",
       palette_hint: "Pick slot (FG/MC1/MC2/OUT), then click a palette color to assign it.",
@@ -960,11 +984,17 @@
       io_title: "Import / Export",
       io_import: "Import",
       io_export: "Export",
+      io_group_project: "Project",
+      io_group_sprite: "Sprite",
+      io_group_image: "Image",
+      io_group_swatch: "Swatch",
       io_project_json: "Project (JSON)",
       io_spritepad_spd: "SpritePad (.spd)",
       io_koala: "Koala (.koa/.kla)",
       io_sprite_png: "Active sprite (PNG)",
       io_sprite_png_import: "PNG → sprite",
+      io_image_png: "Active image (PNG)",
+      io_image_png_import: "PNG → image",
       io_swatch_png_import: "PNG → swatch",
       io_spritesheet_png: "Spritesheet (PNG)",
       spd_export_empty: "No 24×21 sprites (or multiples) to export to SpritePad (.spd).",
@@ -1340,6 +1370,12 @@
       const f = fileSpritePng.files?.[0];
       if (!f) return;
       await importPngAsSprite(f);
+    });
+
+    fileImagePng.addEventListener("change", async () => {
+      const f = fileImagePng.files?.[0];
+      if (!f) return;
+      await importPngAsMcImage(f);
     });
 
     fileSwatchPng.addEventListener("change", async () => {
@@ -1853,11 +1889,16 @@
   }
 
   function renderIO() {
+    const active = getActiveSprite();
+    const isSpriteDoc = !!active && !isMcImage(active);
+    const isImageDoc = !!active && isMcImage(active);
+
     const options = [
       {
         id: "project_json",
         label: "Project (JSON)",
         i18n: "io_project_json",
+        group: "project",
         action: "both",
         run: async (kind) => {
           if (kind === "import") {
@@ -1872,6 +1913,7 @@
         id: "spritepad_spd",
         label: "SpritePad (.spd)",
         i18n: "io_spritepad_spd",
+        group: "sprite",
         action: "both",
         run: async (kind) => {
           if (kind === "import") {
@@ -1883,10 +1925,34 @@
         },
       },
       {
+        id: "sprite_png",
+        label: "Active sprite (PNG)",
+        i18n: "io_sprite_png",
+        group: "sprite",
+        action: "export",
+        enabled: () => isSpriteDoc,
+        run: async () => {
+          await exportActiveSpritePng();
+        },
+      },
+      {
+        id: "sprite_png_import",
+        label: "Sprite (PNG → sprite)",
+        i18n: "io_sprite_png_import",
+        group: "sprite",
+        action: "import",
+        run: async () => {
+          fileSpritePng.value = "";
+          fileSpritePng.click();
+        },
+      },
+      {
         id: "koala_kla",
         label: "Koala (.koa/.kla)",
         i18n: "io_koala",
+        group: "image",
         action: "both",
+        enabled: () => (ioAction === "export" ? isImageDoc : true),
         run: async (kind) => {
           if (kind === "import") {
             fileKoala.value = "";
@@ -1897,28 +1963,32 @@
         },
       },
       {
-        id: "sprite_png",
-        label: "Active sprite (PNG)",
-        i18n: "io_sprite_png",
+        id: "image_png",
+        label: "Active image (PNG)",
+        i18n: "io_image_png",
+        group: "image",
         action: "export",
+        enabled: () => isImageDoc,
         run: async () => {
           await exportActiveSpritePng();
         },
       },
       {
-        id: "sprite_png_import",
-        label: "Sprite (PNG → sprite)",
-        i18n: "io_sprite_png_import",
+        id: "image_png_import",
+        label: "Image (PNG → image)",
+        i18n: "io_image_png_import",
+        group: "image",
         action: "import",
         run: async () => {
-          fileSpritePng.value = "";
-          fileSpritePng.click();
+          fileImagePng.value = "";
+          fileImagePng.click();
         },
       },
       {
         id: "swatch_png_import",
         label: "Swatch (PNG → swatch)",
         i18n: "io_swatch_png_import",
+        group: "swatch",
         action: "import",
         run: async () => {
           fileSwatchPng.value = "";
@@ -1929,6 +1999,7 @@
         id: "spritesheet_png",
         label: "Spritesheet (PNG)",
         i18n: "io_spritesheet_png",
+        group: "sprite",
         action: "export",
         run: async () => {
           await exportSpritesheetPng();
@@ -1937,13 +2008,25 @@
     ];
 
     ioList.innerHTML = "";
-    for (const opt of options) {
-      const allowed = opt.action === "both" || opt.action === ioAction;
+    const visible = options.filter((opt) => opt.action === "both" || opt.action === ioAction);
+    let lastGroup = null;
+    for (const opt of visible) {
+      if (opt.group && opt.group !== lastGroup) {
+        const g = document.createElement("div");
+        g.className = "ioGroup";
+        if (opt.group === "project") g.textContent = t("io_group_project");
+        else if (opt.group === "sprite") g.textContent = t("io_group_sprite");
+        else if (opt.group === "image") g.textContent = t("io_group_image");
+        else if (opt.group === "swatch") g.textContent = t("io_group_swatch");
+        else g.textContent = String(opt.group);
+        ioList.appendChild(g);
+        lastGroup = opt.group;
+      }
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ioItem btn";
-      btn.disabled = !allowed;
       btn.dataset.io = opt.id;
+      if (typeof opt.enabled === "function") btn.disabled = !opt.enabled();
       btn.innerHTML = `<div class="ioItem__title">${t(opt.i18n)}</div>`;
       btn.addEventListener("click", async () => {
         if (btn.disabled) return;
@@ -3436,18 +3519,41 @@
 
   function roll(dx, dy) {
     if (!dx && !dy) return;
-    pushUndo();
-    const next = new Uint8Array(gridW * gridH).fill(TRANSPARENT);
-    for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        const nx = wrapIndex(x + dx, gridW);
-        const ny = wrapIndex(y + dy, gridH);
-        next[ny * gridW + nx] = pixels[y * gridW + x];
+    const sp = getActiveSprite();
+    if (!sp) return;
+    const c64 = ensureC64Layers(sp);
+    const w = gridW;
+    const h = gridH;
+
+    pushUndoAllLayers();
+
+    const rollLayer = (src, fill) => {
+      const next = new Uint8Array(w * h);
+      next.fill(fill);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const nx = wrapIndex(x + dx, w);
+          const ny = wrapIndex(y + dy, h);
+          next[ny * w + nx] = src[y * w + x];
+        }
       }
-    }
-    pixels = next;
+      return next;
+    };
+
+    c64.mc = rollLayer(c64.mc, 0);
+    c64.out = rollLayer(c64.out, 0);
+    c64.cheat = rollLayer(c64.cheat, TRANSPARENT);
+    sp.pixels = c64.cheat;
+
+    // Keep the active edit layer buffer in sync.
+    const layer = getEditLayer();
+    if (layer === "mc") pixels = c64.mc;
+    else if (layer === "out") pixels = c64.out;
+    else pixels = c64.cheat;
+
     updateHistoryButtons();
-    syncActiveSpriteFromCanvas();
+    renderSprites();
+    scheduleSave();
     render();
   }
 
@@ -4813,6 +4919,31 @@
       lastLayer: "cheat",
       lastNonCheatLayer: "mc",
     };
+    sprites.push(sp);
+    setActiveSprite(id);
+    saveState();
+  }
+
+  async function importPngAsMcImage(file) {
+    const img = await loadImageFromFile(file);
+    const w = clampInt(img.naturalWidth || img.width, 1, MAX_SIZE);
+    const h = clampInt(img.naturalHeight || img.height, 1, MAX_SIZE);
+    const data = imageToC64Pixels(img, w, h);
+    const id = makeId("sprite");
+    const name = `Obrazek ${sprites.length + 1}`;
+    const cheat = data;
+    const sp = { id, kind: DOC_KIND_MC_IMAGE, name, w, h, pixels: cheat };
+    sp.c64 = {
+      w,
+      h,
+      slots: { fg: colorSlots.fg, mc1: colorSlots.mc1, mc2: colorSlots.mc2, out: colorSlots.out, bg: colorSlots.out },
+      mc: new Uint8Array(w * h).fill(0),
+      out: new Uint8Array(w * h).fill(0),
+      cheat,
+      lastLayer: "cheat",
+      lastNonCheatLayer: "mc",
+    };
+    ensureMcImageCells(sp);
     sprites.push(sp);
     setActiveSprite(id);
     saveState();
