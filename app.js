@@ -885,6 +885,10 @@
       koala_not_koala: "To nie wygląda na plik Koala (.koa/.kla).",
       project_invalid: "Nieprawidłowy plik projektu.",
       project_import_fail: "Nie udało się zaimportować projektu.",
+      project_import_overwrite_title: "Import projektu",
+      project_import_overwrite_confirm:
+        "Zaimportować projekt i nadpisać bieżący? Utracisz aktualne dane (warto najpierw zrobić Export/backup).",
+      project_import_overwrite_ok: "Importuj i nadpisz",
       save_now: "Zapisz teraz",
       clear_saved: "Wyczyść zapis",
       ls_tip: "Tip: Export/Import na górnym pasku to backup projektu jako plik JSON.",
@@ -1010,6 +1014,10 @@
       koala_not_koala: "This doesn't look like a Koala (.koa/.kla) file.",
       project_invalid: "Invalid project file.",
       project_import_fail: "Failed to import the project.",
+      project_import_overwrite_title: "Import project",
+      project_import_overwrite_confirm:
+        "Import the project and overwrite the current one? You will lose current data (export a backup first).",
+      project_import_overwrite_ok: "Import & overwrite",
       save_now: "Save now",
       clear_saved: "Clear saved",
       ls_tip: "Tip: Export/Import in the top bar is a JSON backup.",
@@ -4889,6 +4897,30 @@
   }
 
   async function importProjectFile(file) {
+    const hasMeaningfulEdits = () => {
+      if (library.length) return true;
+      if (sprites.length > 1) return true;
+      const sp0 = sprites[0];
+      if (!sp0) return false;
+      for (const sp of sprites) {
+        const c64 = ensureC64Layers(sp);
+        // Any non-empty MC pixels?
+        for (let i = 0; i < c64.mc.length; i++) if (c64.mc[i]) return true;
+        // Any non-empty OUT pixels?
+        for (let i = 0; i < c64.out.length; i++) if (c64.out[i]) return true;
+        // Any non-transparent CHEAT pixels?
+        for (let i = 0; i < c64.cheat.length; i++) if (c64.cheat[i] !== TRANSPARENT) return true;
+      }
+      return false;
+    };
+
+    if (hasMeaningfulEdits()) {
+      const ok = await askConfirm(t("project_import_overwrite_confirm"), {
+        title: t("project_import_overwrite_title"),
+        okText: t("project_import_overwrite_ok"),
+      });
+      if (!ok) return;
+    }
     try {
       const text = await file.text();
       const state = JSON.parse(text);
