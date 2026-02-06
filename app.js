@@ -214,6 +214,7 @@
 
   const undoStack = [];
   const redoStack = [];
+  let editedSinceExport = false;
 
   function resizeCellLayer(prev, prevCw, prevCh, nextCw, nextCh, fill) {
     const out = new Uint8Array(nextCw * nextCh);
@@ -246,7 +247,8 @@
     if (!snapshot && sp && isMcImage(sp) && getEditLayer() === "mc") {
       undoStack.push(captureMcImageSnapshot());
     } else {
-      undoStack.push(snapshot ?? pixels.slice());
+      if (snapshot) undoStack.push(snapshot);
+      else undoStack.push(captureLayerSnapshot(getEditLayer()));
     }
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
     redoStack.length = 0;
@@ -287,9 +289,39 @@
       renderSprites();
       return;
     }
+    if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "layer") {
+      const sp = getActiveSprite();
+      if (!sp) return;
+      const c64 = ensureC64Layers(sp);
+      const layer = normalizeLayerForSprite(sp, snap.layer);
+      const next = snap.data instanceof Uint8Array ? snap.data.slice() : new Uint8Array(0);
+      if (layer === "mc") c64.mc = next;
+      else if (layer === "out") c64.out = next;
+      else c64.cheat = next;
+      sp.pixels = c64.cheat;
+      if (getEditLayer() === layer) pixels = next;
+      renderSprites();
+      scheduleSave();
+      return;
+    }
     // Single-layer snapshot.
     pixels = snap;
     syncActiveSpriteFromCanvas();
+  }
+
+  function normalizeLayerForSprite(sp, layer) {
+    const next = layer === "cheat" ? "cheat" : layer === "out" ? "out" : "mc";
+    if (isMcImage(sp) && next === "out") return "mc";
+    return next;
+  }
+
+  function captureLayerSnapshot(layer) {
+    const sp = getActiveSprite();
+    if (!sp) return { type: "layer", layer: "cheat", data: new Uint8Array(0) };
+    const c64 = ensureC64Layers(sp);
+    const next = normalizeLayerForSprite(sp, layer);
+    const src = next === "mc" ? c64.mc : next === "out" ? c64.out : c64.cheat;
+    return { type: "layer", layer: next, data: src.slice() };
   }
 
   const selection = {
@@ -1109,9 +1141,8 @@
   await setInitialGrid();
   wireEvents();
   wirePersistenceGuards();
-  if (!loadState()) {
-    initSprites();
-  }
+  if (!loadState()) initSprites();
+  else editedSinceExport = true;
   applyCollapseUi();
   renderSprites();
   renderLibrary();
@@ -2357,7 +2388,7 @@
     pasteMode = false;
     updateToolButtons();
     syncModeUi();
-    if (opts.resetHistory !== false) resetHistory();
+    if (opts.resetHistory) resetHistory();
     scheduleSave();
     render();
   }
@@ -2409,8 +2440,10 @@
     const sp = getActiveSprite();
     if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "all") redoStack.push(captureAllLayersSnapshot());
     else if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "mcimg") redoStack.push(captureMcImageSnapshot());
+    else if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "layer")
+      redoStack.push(captureLayerSnapshot(snap.layer));
     else if (sp && isMcImage(sp) && getEditLayer() === "mc") redoStack.push(captureMcImageSnapshot());
-    else redoStack.push(pixels.slice());
+    else redoStack.push(captureLayerSnapshot(getEditLayer()));
     applyUndoSnapshot(snap);
     updateHistoryButtons();
     render();
@@ -2422,8 +2455,10 @@
     const sp = getActiveSprite();
     if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "all") undoStack.push(captureAllLayersSnapshot());
     else if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "mcimg") undoStack.push(captureMcImageSnapshot());
+    else if (snap && typeof snap === "object" && !(snap instanceof Uint8Array) && snap.type === "layer")
+      undoStack.push(captureLayerSnapshot(snap.layer));
     else if (sp && isMcImage(sp) && getEditLayer() === "mc") undoStack.push(captureMcImageSnapshot());
-    else undoStack.push(pixels.slice());
+    else undoStack.push(captureLayerSnapshot(getEditLayer()));
     applyUndoSnapshot(snap);
     updateHistoryButtons();
     render();
@@ -3893,6 +3928,7 @@
   function scheduleSave() {
     if (isResetting) return;
     if (isHydrating) return;
+    editedSinceExport = true;
     if (saveTimer) return;
     saveTimer = setTimeout(() => {
       saveTimer = null;
@@ -4894,27 +4930,11 @@
   function exportProject() {
     const json = JSON.stringify(buildStateObject());
     downloadText(json, "jurased_project.json", "application/json");
+    editedSinceExport = false;
   }
 
   async function importProjectFile(file) {
-    const hasMeaningfulEdits = () => {
-      if (library.length) return true;
-      if (sprites.length > 1) return true;
-      const sp0 = sprites[0];
-      if (!sp0) return false;
-      for (const sp of sprites) {
-        const c64 = ensureC64Layers(sp);
-        // Any non-empty MC pixels?
-        for (let i = 0; i < c64.mc.length; i++) if (c64.mc[i]) return true;
-        // Any non-empty OUT pixels?
-        for (let i = 0; i < c64.out.length; i++) if (c64.out[i]) return true;
-        // Any non-transparent CHEAT pixels?
-        for (let i = 0; i < c64.cheat.length; i++) if (c64.cheat[i] !== TRANSPARENT) return true;
-      }
-      return false;
-    };
-
-    if (hasMeaningfulEdits()) {
+    if (editedSinceExport) {
       const ok = await askConfirm(t("project_import_overwrite_confirm"), {
         title: t("project_import_overwrite_title"),
         okText: t("project_import_overwrite_ok"),
@@ -4926,7 +4946,10 @@
       const state = JSON.parse(text);
       const ok = hydrateFromStateObject(state);
       if (!ok) await showAlert(t("project_invalid"), { title: "Project" });
-      else saveState();
+      else {
+        editedSinceExport = true;
+        saveState();
+      }
     } catch {
       await showAlert(t("project_import_fail"), { title: "Project" });
     }

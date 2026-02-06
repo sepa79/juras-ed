@@ -27,7 +27,7 @@
           <span class="themeText">Theme</span>
         </button>
         <button id="btnHotkeys" class="btn" type="button" title="Hotkeys (?)" aria-label="Hotkeys">?</button>
-        <button id="btnLang" class="btn" type="button" title="Language">PL</button>
+        <button id="btnLang" class="btn" type="button" title="Language (PL/EN)">PL</button>
         <input
           id="projectName"
           class="topbarInput"
@@ -38,15 +38,15 @@
           aria-label="Collection name"
           placeholder="Moja kolekcja"
         />
-        <button id="btnIO" class="btn" type="button" title="Import / Export">
+        <button id="btnIO" class="btn" type="button" title="Import / Export (I/E)">
           <span class="ioIcon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 18l5-5h-3V3h-4v10H7l5 5z"/></svg>
             <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 20h14v-2H5v2zM12 2l5 5h-3v6h-4V7H7l5-5z"/></svg>
           </span>
           <span class="ioText">I/E</span>
         </button>
-        <button id="btnSave" class="btn btn--primary" type="button" data-i18n="save_png">Zapisz PNG</button>
-        <button id="btnHelp" class="btn" type="button" title="Pomoc" data-i18n="help">Pomoc</button>
+        <button id="btnSave" class="btn btn--primary" type="button" title="Export PNG (spritesheet)" data-i18n="save_png">Zapisz PNG</button>
+        <button id="btnHelp" class="btn" type="button" title="Pomoc (README)" data-i18n="help">Pomoc</button>
       </div>
     </header>
 
@@ -180,7 +180,7 @@
           </div>
           <div class="row">
             <button id="btnTransform" class="btn" type="button" aria-pressed="false" title="Transform mode (T)" data-i18n="transform_mode">Transform mode</button>
-            <button id="btnClear" class="btn btn--danger" type="button" data-i18n="clear">Wyczyść</button>
+            <button id="btnClear" class="btn btn--danger" type="button" title="Wyczyść (Shift: wszystkie warstwy)" data-i18n="clear">Wyczyść</button>
           </div>
           <div class="hint" data-i18n="rmb_eraser_hint">Prawy przycisk myszy zawsze działa jak gumka (bez zmiany narzędzia).</div>
         </section>
@@ -458,6 +458,7 @@ Prosty edytor HTML do rysowania pixel-artu/sprite’ów w palecie C64 i zapisywa
 - **Tryb kursora:** normalny albo **2× wide pixel** (jak C64 multicolor – rysowanie w parach pikseli w poziomie).
 - **Prawy przycisk myszy:** zawsze rysuje transparentem (działa jak „gumka” bez zmiany narzędzia).
 - **Undo/Redo:** historia zmian (Ctrl+Z / Ctrl+Y lub Ctrl+Shift+Z).
+- **Uwaga:** historia zmian jest per aktywny dokument i może się wyczyścić po zmianie aktywnego sprite’a/obrazka, imporcie, zmianie rozmiaru płótna itp.
 
 ## Uruchomienie
 
@@ -499,6 +500,7 @@ Repo ma workflow do Pages (`.github/workflows/pages.yml`).
 - **Wide pixel:** `W`
 - **Wypełnianie (toggle):** `S`
 - **Undo / Redo:** `Ctrl+Z`, `Ctrl+Y` (lub `Ctrl+Shift+Z`)
+  - Uwaga: po przełączeniu na inny sprite/obrazek historia może być pusta (Ctrl+Z nie cofnie poprzedniego dokumentu).
 - **Zapis PNG:** przycisk „Zapisz PNG”.
 - **Scroll:**
   - Wheel = zoom
